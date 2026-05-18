@@ -1,0 +1,30 @@
+# Email Service Configuration (Nodemailer)
+# Choose your email provider and configure accordingly
+
+# Gmail Configuration (Recommended for development)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_SECURE=false
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+
+# Outlook Configuration
+# EMAIL_HOST=smtp-mail.outlook.com
+# EMAIL_PORT=587
+# EMAIL_SECURE=false
+# EMAIL_USER=your-email@outlook.com
+# EMAIL_PASS=your-password
+
+# SendGrid Configuration
+# EMAIL_HOST=smtp.sendgrid.net
+# EMAIL_PORT=587
+# EMAIL_SECURE=false
+# EMAIL_USER=apikey
+# EMAIL_PASS=YOUR_SENDGRID_API_KEY
+
+# Email Display Settings
+EMAIL_FROM_NAME=Agri-Connect
+EMAIL_TEST_ADDRESS=your-test-email@gmail.com
+
+# Frontend URL (for email links)
+FRONTEND_APP_URL=http://localhost:3000

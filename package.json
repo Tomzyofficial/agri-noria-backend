@@ -1,0 +1,46 @@
+{
+   "name": "backend",
+   "version": "1.0.0",
+   "main": "src/server.js",
+   "type": "module",
+   "scripts": {
+      "test": "NODE_ENV=test jest --runInBand",
+      "dev": "nodemon src/server.js",
+      "start": "node src/server.js",
+      "migrate": "node scratch/migrate.js",
+      "lint": "eslint .",
+      "lint:fix": "eslint . --fix"
+   },
+   "keywords": [],
+   "author": "Tomzywork4u",
+   "license": "ISC",
+   "description": "",
+   "dependencies": {
+      "@eslint/eslintrc": "0.1.0",
+      "agora-token": "^2.0.5",
+      "axios": "^1.16.0",
+      "bcryptjs": "^3.0.2",
+      "cloudinary": "^2.7.0",
+      "cookie-parser": "^1.4.6",
+      "cors": "^2.8.5",
+      "dotenv": "^17.2.2",
+      "express": "^5.1.0",
+      "jose": "^6.1.0",
+      "multer": "^1.4.5-lts.1",
+      "next-cloudinary": "^6.16.0",
+      "nodemailer": "^8.0.7",
+      "pdfkit": "^0.18.0",
+      "pg": "^8.16.3"
+   },
+   "devDependencies": {
+      "@eslint/js": "^9.39.3",
+      "eslint": "^10.0.2",
+      "globals": "^14.0.0",
+      "jest": "^25.0.0",
+      "nodemon": "^3.1.14",
+      "supertest": "^6.3.3"
+   },
+   "jest": {
+      "testEnvironment": "node"
+   }
+}
