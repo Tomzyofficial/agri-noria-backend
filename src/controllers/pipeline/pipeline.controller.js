@@ -23,8 +23,10 @@ import {
    getAllLogisticsEntries,
    updateLogisticsStatusDb,
    getWarehouseInventoryStats,
+   addWarehouseStock,
    createEcosystemOrder, getEcosystemOrders, processEscrowPayment, assignOrderDistributor, getAllEcosystemOrders,
-   getEcosystemOrdersByDistributor, markOrderDelivered
+   getEcosystemOrdersByDistributor, markOrderDelivered,
+   getDistributorStats
 } from "../../db/pipeline/pipeline.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
@@ -852,6 +854,22 @@ pipelineController.getWarehouseInventory = async (req, res) => {
    }
 };
 
+pipelineController.addWarehouseStock = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+      const { commodity, quantity_tons, warehouse_name } = req.body;
+      if (!commodity || !quantity_tons || !warehouse_name) {
+         return res.status(400).json({ success: false, error: "Missing required fields" });
+      }
+      const record = await addWarehouseStock(commodity, parseFloat(quantity_tons), warehouse_name);
+      return res.status(201).json({ success: true, data: record });
+   } catch (error) {
+      console.error("Error adding warehouse stock:", error);
+      return res.status(500).json({ success: false, error: "Failed to add warehouse stock" });
+   }
+};
+
 pipelineController.getDistributors = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
@@ -869,12 +887,19 @@ pipelineController.createEcosystemOrder = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const { items, total_amount, delivery_address } = req.body;
+      const { items, total_amount, delivery_address, status, escrow_status } = req.body;
       if (!items || !items.length) {
          return res.status(400).json({ success: false, error: "Order items are required" });
       }
 
-      const order = await createEcosystemOrder(payload.id, items, total_amount, delivery_address);
+      const order = await createEcosystemOrder(
+         payload.id, 
+         items, 
+         total_amount, 
+         delivery_address, 
+         status || 'pending', 
+         escrow_status || 'none'
+      );
       return res.status(201).json({ success: true, data: order });
    } catch (error) {
       console.error("Error creating ecosystem order:", error);
@@ -957,6 +982,23 @@ pipelineController.markOrderAsDelivered = async (req, res) => {
    } catch (error) {
       console.error("Error marking order as delivered:", error);
       return res.status(500).json({ success: false, error: "Failed to update order" });
+   }
+};
+
+pipelineController.getDistributorStats = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      if (payload.account_type?.toLowerCase() !== 'distributor') {
+         return res.status(403).json({ success: false, error: "Access denied. Not a distributor." });
+      }
+
+      const stats = await getDistributorStats(payload.id);
+      return res.status(200).json({ success: true, data: stats });
+   } catch (error) {
+      console.error("Error fetching distributor stats:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch distributor stats" });
    }
 };
 

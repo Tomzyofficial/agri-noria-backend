@@ -8,6 +8,7 @@ pipelineRoute.get("/pipeline/stats/platform-wallet", pipelineController.getPlatf
 pipelineRoute.get("/pipeline/logistics/all", pipelineController.getAllLogistics);
 pipelineRoute.post("/pipeline/logistics/update-status", pipelineController.updateLogisticsStatus);
 pipelineRoute.get("/pipeline/warehouse/inventory", pipelineController.getWarehouseInventory);
+pipelineRoute.post("/pipeline/warehouse/inventory", pipelineController.addWarehouseStock);
 pipelineRoute.get("/pipeline/distributors", pipelineController.getDistributors);
 
 // Farmer Profiles
@@ -81,6 +82,7 @@ pipelineRoute.patch("/pipeline/repayments/:id", pipelineController.processRepaym
 pipelineRoute.get("/pipeline/stats", pipelineController.getStats);
 pipelineRoute.get("/pipeline/stats/sales", pipelineController.getSalesDashboardStats);
 pipelineRoute.get("/pipeline/stats/intelligence", pipelineController.getIntelligenceDashboardStats);
+pipelineRoute.get("/pipeline/distributor/stats", pipelineController.getDistributorStats);
 
 // Ecosystem Buyer Orders
 pipelineRoute.post("/pipeline/buyer-orders", pipelineController.createEcosystemOrder);
