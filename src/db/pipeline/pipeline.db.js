@@ -239,42 +239,58 @@ async function assignFarmerToCluster(clusterId, farmerId) {
       [clusterId, farmerId]
    );
 
-   // Sync cluster_id to farmer_profiles
-   await pool.query(
-      `UPDATE farmer_profiles SET cluster_id = $1 WHERE id = $2`,
-      [clusterId, farmerId]
-   );
+   // Sync cluster_id to farmer_profiles (optional/legacy column)
+   try {
+      await pool.query(
+         `UPDATE farmer_profiles SET cluster_id = $1 WHERE id = $2`,
+         [clusterId, farmerId]
+      );
+   } catch (e) {
+      console.log("Optional farmer_profiles.cluster_id column sync skipped:", e.message);
+   }
 
    return rows[0];
 }
 
 async function getEligibleFarmersForCluster(programId, clusterId) {
    let query = `SELECT fp.*, v.fname, v.lname`;
-   let params = [programId];
+   let params = [];
 
-   if (clusterId) {
+   if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
       query += `, (3959 * acos(cos(radians(c.gps_latitude)) * cos(radians(fp.gps_latitude)) * cos(radians(fp.gps_longitude) - radians(c.gps_longitude)) + sin(radians(c.gps_latitude)) * sin(radians(fp.gps_latitude)))) AS distance
       FROM farmer_profiles fp
       JOIN vendors v ON fp.vendor_id = v.id
-      CROSS JOIN (SELECT gps_latitude, gps_longitude FROM clusters WHERE id = $2) c`;
+      CROSS JOIN (SELECT gps_latitude, gps_longitude FROM clusters WHERE id = $1) c`;
       params.push(clusterId);
    } else {
       query += ` FROM farmer_profiles fp JOIN vendors v ON fp.vendor_id = v.id`;
    }
 
-   query += ` WHERE fp.program_id = $1
-       AND (fp.onboarding_status = 'completed' OR fp.onboarding_status = 'verified')
-       AND (
-          SELECT COUNT(*) FROM training_modules tm WHERE tm.program_id = fp.program_id
-       ) = (
-          SELECT COUNT(*) FROM farmer_training_progress ftp WHERE ftp.farmer_id = fp.id AND ftp.status = 'completed'
-       )
-       AND NOT EXISTS (
-          SELECT 1 FROM cluster_members cm JOIN clusters cl ON cm.cluster_id = cl.id
-          WHERE cm.farmer_id = fp.id AND cl.program_id = $1
-       )`;
+   query += ` WHERE (fp.onboarding_status = 'completed' OR fp.onboarding_status = 'verified')`;
 
-   if (clusterId) {
+   if (programId && programId !== 'null' && programId !== 'undefined') {
+      params.push(programId);
+      const paramPlaceholder = `$${params.length}`;
+      query += ` AND fp.program_id = ${paramPlaceholder}
+        AND (
+           SELECT COUNT(*) FROM training_modules tm WHERE tm.program_id = fp.program_id
+        ) = (
+           SELECT COUNT(*) FROM farmer_training_progress ftp WHERE ftp.farmer_id = fp.id AND ftp.status = 'completed'
+        )
+        AND NOT EXISTS (
+           SELECT 1 FROM cluster_members cm JOIN clusters cl ON cm.cluster_id = cl.id
+           WHERE cm.farmer_id = fp.id AND cl.program_id = ${paramPlaceholder}
+        )`;
+   } else {
+      // If no program is specified, they just shouldn't be in this cluster yet
+      if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
+         query += ` AND NOT EXISTS (
+            SELECT 1 FROM cluster_members cm WHERE cm.farmer_id = fp.id AND cm.cluster_id = $1
+         )`;
+      }
+   }
+
+   if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
       query += ` ORDER BY distance ASC`;
    }
 
@@ -311,11 +327,15 @@ async function removeFarmerFromCluster(clusterId, farmerId, supervisorId) {
 
    if (rowCount === 0) throw new Error("Farmer not found in cluster");
 
-   // Clear cluster_id from farmer_profiles
-   await pool.query(
-      `UPDATE farmer_profiles SET cluster_id = NULL WHERE id = $1`,
-      [farmerId]
-   );
+   // Clear cluster_id from farmer_profiles (optional/legacy column)
+   try {
+      await pool.query(
+         `UPDATE farmer_profiles SET cluster_id = NULL WHERE id = $1`,
+         [farmerId]
+      );
+   } catch (e) {
+      console.log("Optional farmer_profiles.cluster_id column sync skipped:", e.message);
+   }
 
    return true;
 }
@@ -856,15 +876,17 @@ async function getPipelineStats() {
 async function getSalesStats() {
    const client = await pool.connect();
    try {
-      const [shipments, pending, fulfilled] = await Promise.all([
+      const [shipments, pending, fulfilled, stock] = await Promise.all([
          client.query("SELECT COUNT(*) as count FROM logistics WHERE status = 'in_transit'"),
          client.query("SELECT COUNT(*) as count FROM logistics WHERE status = 'pending'"),
          client.query("SELECT COUNT(*) as count FROM sales WHERE status = 'settled' OR status = 'completed'"),
+         client.query("SELECT COALESCE(SUM(quantity_tons), 0) as total FROM warehouse_stocks"),
       ]);
       return {
          activeShipments: parseInt(shipments.rows[0].count),
          pendingDeliveries: parseInt(pending.rows[0].count),
          fulfilledOrders: parseInt(fulfilled.rows[0].count),
+         warehouseStock: parseFloat(stock.rows[0].total),
       };
    } finally {
       client.release();
@@ -898,13 +920,13 @@ async function getAllDistributors() {
    return rows;
 }
 
-async function createEcosystemOrder(buyerId, items, totalAmount, deliveryAddress) {
+async function createEcosystemOrder(buyerId, items, totalAmount, deliveryAddress, status = 'pending', escrowStatus = 'none') {
    const client = await pool.connect();
    try {
       await client.query("BEGIN");
       const { rows } = await client.query(
-         "INSERT INTO buyer_ecosystem_orders (buyer_id, total_amount, delivery_address) VALUES ($1, $2, $3) RETURNING id",
-         [buyerId, totalAmount, deliveryAddress]
+         "INSERT INTO buyer_ecosystem_orders (buyer_id, total_amount, delivery_address, status, escrow_status) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+         [buyerId, totalAmount, deliveryAddress, status, escrowStatus]
       );
       const orderId = rows[0].id;
 
@@ -914,6 +936,14 @@ async function createEcosystemOrder(buyerId, items, totalAmount, deliveryAddress
             [orderId, item.product_id, item.product_name, item.quantity, item.price_per_unit]
          );
       }
+
+      if (escrowStatus === 'held') {
+         await client.query(
+            "INSERT INTO buyer_ecosystem_escrow (order_id, buyer_id, amount, payment_reference, status) VALUES ($1, $2, $3, $4, 'held')",
+            [orderId, buyerId, totalAmount, `MANUAL-${Date.now()}`]
+         );
+      }
+
       await client.query("COMMIT");
       return { id: orderId };
    } catch (error) {
@@ -988,11 +1018,43 @@ async function getEcosystemOrdersByDistributor(distributorId) {
 }
 
 async function markOrderDelivered(orderId) {
-   await pool.query(
-      "UPDATE buyer_ecosystem_orders SET status = 'delivered', updated_at = now() WHERE id = $1",
-      [orderId]
+    await pool.query(
+       "UPDATE buyer_ecosystem_orders SET status = 'delivered', updated_at = now() WHERE id = $1",
+       [orderId]
+    );
+    return true;
+ }
+ 
+async function getDistributorStats(distributorId) {
+   const { rows } = await pool.query(
+      `SELECT 
+         COUNT(*)::int as total_assigned,
+         COUNT(*) FILTER (WHERE items_status = 'dispatched')::int as total_dispatched,
+         COUNT(*) FILTER (WHERE items_status = 'delivered')::int as total_delivered,
+         COUNT(*) FILTER (WHERE items_status IS NULL OR items_status = 'approved' OR items_status = 'pending')::int as total_pending,
+         COALESCE(SUM(total_value), 0)::float as total_value_handled,
+         COALESCE(SUM(CASE WHEN items_status = 'delivered' THEN total_value * 0.05 ELSE 0 END), 0)::float as estimated_earnings
+       FROM input_requests
+       WHERE distributor_id = $1`,
+      [distributorId]
    );
-   return true;
+   
+   const historyRes = await pool.query(
+      `SELECT 
+         TO_CHAR(created_at, 'Mon YYYY') as period,
+         COUNT(*)::int as count,
+         COALESCE(SUM(total_value), 0)::float as value
+       FROM input_requests
+       WHERE distributor_id = $1 AND items_status = 'delivered'
+       GROUP BY DATE_TRUNC('month', created_at), TO_CHAR(created_at, 'Mon YYYY')
+       ORDER BY DATE_TRUNC('month', created_at) ASC`,
+      [distributorId]
+   );
+
+   return {
+      summary: rows[0],
+      history: historyRes.rows
+   };
 }
 
 async function getPlatformWalletTotals() {
@@ -1031,15 +1093,24 @@ async function updateLogisticsStatusDb(id, status) {
 }
 
 async function getWarehouseInventoryStats() {
-   // For now, we use logistics 'aggregated' and 'pending' status as a proxy for inventory
    const { rows } = await pool.query(
-      `SELECT commodity, SUM(weight_tons) as weight_tons, warehouse_name, 'A' as grade
-       FROM logistics 
-       WHERE status = 'aggregated' OR status = 'pending'
-       GROUP BY commodity, warehouse_name`
+      `SELECT id, commodity, quantity_tons as weight_tons, warehouse_name, 'A' as grade, status
+       FROM warehouse_stocks
+       ORDER BY created_at DESC`
    );
    return rows;
 }
+
+async function addWarehouseStock(commodity, quantityTons, warehouseName) {
+   const { rows } = await pool.query(
+      `INSERT INTO warehouse_stocks (commodity, quantity_tons, warehouse_name, status)
+       VALUES ($1, $2, $3, 'available')
+       RETURNING *`,
+      [commodity, quantityTons, warehouseName]
+   );
+   return rows[0];
+}
+
 
 export {
    createWallet, getWalletByOwner, depositLockedFunds, depositToClusterWallet,
@@ -1071,6 +1142,8 @@ export {
    getAllLogisticsEntries,
    updateLogisticsStatusDb,
    getWarehouseInventoryStats,
+   addWarehouseStock,
    createEcosystemOrder, getEcosystemOrders, getAllEcosystemOrders, processEscrowPayment, assignOrderDistributor,
-   getEcosystemOrdersByDistributor, markOrderDelivered
+   getEcosystemOrdersByDistributor, markOrderDelivered,
+   getDistributorStats
 };

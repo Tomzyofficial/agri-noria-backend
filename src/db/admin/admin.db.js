@@ -265,6 +265,16 @@ async function disburseFundsFromFinance(financeUserId, targetWalletId, amount, d
 
 // Get all active entity wallets for dropdown
 async function getAllEntityWallets() {
+   try {
+      await pool.query(
+         `INSERT INTO wallets (owner_id, owner_type, balance, locked_balance, currency)
+          SELECT id, LOWER(account_type), 0.00, 0.00, 'NGN'
+          FROM vendors
+          WHERE id NOT IN (SELECT DISTINCT owner_id FROM wallets) AND account_type IS NOT NULL`
+      );
+   } catch (err) {
+      console.error("Error auto-initializing wallets:", err);
+   }
    const { rows } = await pool.query(
       `SELECT w.id, w.owner_type, w.owner_id, w.balance, v.fname, v.lname, v.email, v.company_name
        FROM wallets w
