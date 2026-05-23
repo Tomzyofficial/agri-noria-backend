@@ -13,4 +13,6 @@ cartOperationRoute.get("/get", buyerCartController.get);
 
 cartOperationRoute.post("/set", buyerCartController.set);
 
+// cartOperationRoute.get("/delete", buyerCartController.delete);
+
 export default cartOperationRoute;

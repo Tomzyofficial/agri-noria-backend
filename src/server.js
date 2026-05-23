@@ -26,6 +26,9 @@ import aggregatorRoute from "./routes/aggregator/aggregator.routes.js";
 import stages12_15Route from "./routes/pipeline/stages-12-15.route.js";
 import inputRequestRoute from "./routes/pipeline/input_request.route.js";
 import trainingMaterialRoutes from "./routes/trainingMaterial.routes.js";
+import logisticsOperationRoute from "./routes/logisitics/logisticsOperation.route.js";
+import paymentsRoute from "./routes/payments.route.js";
+import ordersRoute from "./routes/buyer/orders.route.js";
 
 const port = process.env.PORT || 8080;
 
@@ -65,7 +68,10 @@ const app = express()
   .use("/api", programsRoute)
   .use("/api", pipelineRoute)
   .use("/api", stages12_15Route)
-  .use("/api/inputs", inputRequestRoute);
+  .use("/api/inputs", inputRequestRoute)
+  .use("/api/vendor/logistics", logisticsOperationRoute)
+  .use("/api/buyer", paymentsRoute)
+  .use("/api/buyer", ordersRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on ${port}`);
