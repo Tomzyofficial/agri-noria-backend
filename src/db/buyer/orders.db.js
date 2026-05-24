@@ -46,8 +46,10 @@ export async function createOrder(orderData) {
 // Get order by ID
 export async function getOrderById(orderId, buyerId) {
   const query = `
-    SELECT *
-    FROM orders WHERE id = $1 AND buyer_id = $2
+    SELECT o.id, o.status, o.delivery_address, o.metadata, ls.assigned_driver_name, ls.assigned_driver_phone
+    FROM orders o
+    LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
+    WHERE o.id = $1 AND o.buyer_id = $2
   `;
 
   const result = await pool.query(query, [orderId, buyerId]);
@@ -230,6 +232,8 @@ export async function getBuyerOrderStats(buyerId) {
       COUNT(*) as total_orders,
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_orders,
       COUNT(CASE WHEN status = 'in_transit' THEN 1 END) as in_transit_orders,
+      COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_orders,
+      COUNT(CASE WHEN status = 'delivered' THEN 1 END) as delivered_orders,
       COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_orders,
       COUNT(CASE WHEN status = 'refunded' THEN 1 END) as refunded_orders,
       COALESCE(SUM(total_amount), 0) as total_spent

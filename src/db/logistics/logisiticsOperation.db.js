@@ -70,23 +70,10 @@ export async function getVehicles(vendorId) {
 export async function getLogisticsProvidersNearBuyer(address) {
   try {
     const searchTerm = address?.trim();
-
-    const queryText = `
-      SELECT veh.id, veh.vendor_id, veh.title, veh.vehicle_type, veh.cargo_type, veh.max_weight_kg, veh.base_location, veh.operating_regions, veh.volume_cubic_meters,
-      veh.pricing_model, veh.rate_amount, veh.images, veh.status, v.email AS logistics_provider_email, v.id AS logistics_provider_id FROM vehicles veh
-      LEFT JOIN
-      vendors v ON veh.vendor_id = v.id
-      WHERE veh.base_location ILIKE '%' || $1 || '%'
-         OR EXISTS (
-            SELECT 1 
-            FROM unnest(veh.operating_regions) AS region
-            WHERE region ILIKE '%' || $1 || '%'
-         )
-      ORDER BY 
-        (veh.base_location ILIKE '%' || $1 || '%') DESC,   -- prioritize base location
-        id;
-    `;
-
+    const queryText = `SELECT veh.id, veh.vendor_id, veh.title, veh.vehicle_type, veh.cargo_type, veh.max_weight_kg, veh.base_location, veh.operating_regions,
+    veh.volume_cubic_meters, veh.pricing_model, veh.rate_amount, veh.images, veh.status, v.email AS logistics_provider_email, v.id AS logistics_provider_id FROM vehicles veh LEFT JOIN vendors v
+    ON veh.vendor_id = v.id WHERE EXISTS (
+    SELECT 1 FROM unnest(string_to_array(lower($1), ' ')) AS keyword WHERE lower(veh.base_location) LIKE '%' || keyword || '%' OR EXISTS (SELECT 1 FROM unnest(veh.operating_regions) AS region WHERE lower(region) LIKE '%' || keyword || '%')) ORDER BY veh.id;`;
     const result = await pool.query(queryText, [searchTerm]);
 
     return {
@@ -159,12 +146,10 @@ export async function getLogisticsOrderStats(vendorId) {
       COUNT(*) FILTER (WHERE o.status = 'pending')::int AS pending_orders,
       COUNT(*) FILTER (WHERE o.status = 'paid')::int AS paid_orders,
       COUNT(*) FILTER (WHERE o.status = 'processing')::int AS processing_orders,
-      COUNT(*) FILTER (WHERE o.status = 'shipped')::int AS shipped_orders,
       COUNT(*) FILTER (WHERE o.status = 'in_transit')::int AS in_transit_orders,
       COUNT(*) FILTER (WHERE o.status = 'delivered')::int AS delivered_orders,
       COUNT(*) FILTER (WHERE o.status = 'completed')::int AS completed_orders,
       COUNT(*) FILTER (WHERE o.status = 'declined')::int AS declined_orders,
-      COUNT(*) FILTER (WHERE o.status = 'cancelled')::int AS cancelled_orders,
       COUNT(*) FILTER (WHERE o.status = 'refunded')::int AS refunded_orders,
       COALESCE(SUM(o.delivery_fee), 0)::numeric AS total_delivery_revenue
     ${LOGISTICS_ORDERS_BASE_JOIN}
@@ -420,7 +405,7 @@ export async function getShipmentOrdersByLogisticsVendorId(
       v.lname AS seller_lname,
       veh.title AS vehicle_title
     ${LOGISTICS_ORDERS_BASE_JOIN}
-      AND o.status IN ('processing', 'shipped')
+      AND o.status IN ('processing', 'in_transit')
     ORDER BY o.updated_at DESC
     LIMIT $2 OFFSET $3
   `;
@@ -461,7 +446,7 @@ export async function startLogisticsShipment(orderId, vendorId) {
 
 /**
  * Get comprehensive order data for sending emails to buyer, seller, and logistics partner
- * Returns all necessary information for email templates
+ * Returns all necessary information for email templates for order confirmation
  */
 export async function getOrderDataForEmails(orderId) {
   try {

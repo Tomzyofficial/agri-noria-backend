@@ -116,7 +116,7 @@ export async function updateOrderStatusToInTransit(orderId) {
  * @param {Object} eventData - Event data
  * @returns {Promise<Object>} Created event
  */
-export async function createShipmentTrackingEvent(eventData) {
+/* export async function createShipmentTrackingEvent(eventData) {
   const {
     shipment_id,
     event_type,
@@ -149,7 +149,7 @@ export async function createShipmentTrackingEvent(eventData) {
 
   const result = await pool.query(query, values);
   return result.rows[0];
-}
+} */
 
 /**
  * Start shipment with full transaction support
@@ -165,16 +165,16 @@ export async function createShipmentTrackingEvent(eventData) {
  */
 export async function startShipmentTransaction(data) {
   const client = await pool.connect();
-  
+
   try {
     await client.query("BEGIN");
 
     // Check if shipment already exists
     const existingShipment = await client.query(
       "SELECT id FROM logistics_shipments WHERE order_id = $1",
-      [data.order_id]
+      [data.order_id],
     );
-    
+
     if (existingShipment.rows.length > 0) {
       await client.query("ROLLBACK");
       return {
@@ -186,7 +186,7 @@ export async function startShipmentTransaction(data) {
     // Validate order status
     const orderResult = await client.query(
       "SELECT status, buyer_id, delivery_address FROM orders WHERE id = $1",
-      [data.order_id]
+      [data.order_id],
     );
 
     if (orderResult.rows.length === 0) {
@@ -198,8 +198,8 @@ export async function startShipmentTransaction(data) {
     }
 
     const order = orderResult.rows[0];
-    const invalidStatuses = ["delivered", "completed", "cancelled", "refunded"];
-    
+    const invalidStatuses = ["delivered", "completed", "declined", "refunded"];
+
     if (invalidStatuses.includes(order.status)) {
       await client.query("ROLLBACK");
       return {
@@ -262,7 +262,7 @@ export async function startShipmentTransaction(data) {
     // Update order status
     await client.query(
       "UPDATE orders SET status = 'in_transit', updated_at = NOW() WHERE id = $1",
-      [data.order_id]
+      [data.order_id],
     );
 
     // Create tracking event
@@ -276,7 +276,7 @@ export async function startShipmentTransaction(data) {
         "completed",
         data.pickup_location || "Warehouse",
         "Shipment started by logistics partner",
-      ]
+      ],
     );
 
     await client.query("COMMIT");
@@ -381,7 +381,7 @@ export async function verifyDeliveryOTP(shipmentId, otp) {
       WHERE id = $1
     `;
     const result = await pool.query(query, [shipmentId]);
-    
+
     if (result.rows.length === 0) {
       return { success: false, error: "Shipment not found" };
     }
@@ -397,7 +397,7 @@ export async function verifyDeliveryOTP(shipmentId, otp) {
     }
 
     const hashedOTP = hashOTP(otp);
-    
+
     if (hashedOTP !== shipment.delivery_otp) {
       return { success: false, error: "Invalid OTP" };
     }
@@ -408,12 +408,237 @@ export async function verifyDeliveryOTP(shipmentId, otp) {
        SET delivery_otp_verified = true, 
            delivery_otp_verified_at = NOW()
        WHERE id = $1`,
-      [shipmentId]
+      [shipmentId],
     );
 
     return { success: true, message: "OTP verified successfully" };
   } catch (error) {
     console.error("Error verifying delivery OTP:", error);
     return { success: false, error: "Failed to verify OTP" };
+  }
+}
+
+/**
+ * Complete delivery (logistics partner action)
+ * Verifies OTP and marks order as completed
+ * @param {string} orderId - Order ID
+ * @param {string} otp - Plain OTP to verify
+ * @param {string} logisticsPartnerId - Logistics partner ID for ownership verification
+ * @returns {Promise<Object>} Result
+ */
+export async function completeDeliveryWithOTP(
+  orderId,
+  otp,
+  logisticsPartnerId,
+) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Verify order belongs to logistics partner
+    const orderQuery = `
+      SELECT o.id, o.status, o.buyer_id, ls.id as shipment_id, ls.delivery_otp, 
+             ls.delivery_otp_expires_at, ls.delivery_otp_verified, ls.logistics_company_id
+      FROM orders o
+      INNER JOIN logistics_shipments ls ON o.id = ls.order_id
+      WHERE o.id = $1 AND ls.logistics_company_id = $2
+    `;
+    const orderResult = await client.query(orderQuery, [
+      orderId,
+      logisticsPartnerId,
+    ]);
+
+    if (orderResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: "Order not found or does not belong to this logistics partner",
+      };
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== "in_transit") {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: `Order is not in transit. Current status: ${order.status}`,
+      };
+    }
+
+    if (order.delivery_otp_verified) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Delivery already completed" };
+    }
+
+    if (new Date() > new Date(order.delivery_otp_expires_at)) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "OTP has expired" };
+    }
+
+    // Verify OTP
+    const hashedOTP = hashOTP(otp);
+    if (hashedOTP !== order.delivery_otp) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Invalid OTP" };
+    }
+
+    // Mark OTP as verified and update shipment
+    await client.query(
+      `UPDATE logistics_shipments 
+       SET delivery_otp_verified = true, 
+           delivery_otp_verified_at = NOW(),
+           delivered_at = NOW(),
+           status = 'delivered'
+       WHERE id = $1`,
+      [order.shipment_id],
+    );
+
+    // Update order status to delivered
+    await client.query(
+      `UPDATE orders 
+       SET status = 'delivered', 
+           updated_at = NOW()
+       WHERE id = $1`,
+      [orderId],
+    );
+
+    // Create tracking event
+    await client.query(
+      `INSERT INTO shipment_tracking_events (
+        shipment_id, event_type, event_status, event_notes
+      ) VALUES ($1, $2, $3, $4)`,
+      [
+        order.shipment_id,
+        "delivery_completed",
+        "delivered",
+        "Delivery completed by logistics partner",
+      ],
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      message: "Delivery completed successfully",
+      data: {
+        order_id: orderId,
+        shipment_id: order.shipment_id,
+        status: "delivered",
+      },
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error completing delivery:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to complete delivery",
+    };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Confirm buyer satisfaction (buyer action)
+ * Verifies OTP and marks buyer as satisfied
+ * @param {string} orderId - Order ID
+ * @param {string} otp - Plain OTP to verify
+ * @param {string} buyerId - Buyer ID for ownership verification
+ * @returns {Promise<Object>} Result
+ */
+export async function confirmBuyerSatisfactionWithOTP(orderId, otp, buyerId) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Verify order belongs to buyer
+    const orderQuery = `
+      SELECT o.id, o.status, o.buyer_id, ls.id as shipment_id, ls.delivery_otp, 
+       ls.delivery_otp_expires_at, ls.buyer_satisfied
+      FROM orders o
+      INNER JOIN logistics_shipments ls ON o.id = ls.order_id
+      WHERE o.id = $1 AND o.buyer_id = $2
+    `;
+    const orderResult = await client.query(orderQuery, [orderId, buyerId]);
+    if (orderResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: "Order not found or does not belong to this buyer",
+      };
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== "in_transit" && order.status !== "delivered") {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: `Order is not eligible for satisfaction confirmation. Current status: ${order.status}`,
+      };
+    }
+
+    if (order.buyer_satisfied) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Buyer satisfaction already confirmed" };
+    }
+
+    if (new Date() > new Date(order.delivery_otp_expires_at)) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "OTP has expired" };
+    }
+
+    // Verify OTP
+    const hashedOTP = hashOTP(otp);
+    if (hashedOTP !== order.delivery_otp) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Invalid OTP" };
+    }
+
+    // Mark buyer as satisfied
+    await client.query(
+      `UPDATE logistics_shipments 
+       SET buyer_satisfied = true, 
+           buyer_satisfied_at = NOW()
+       WHERE id = $1`,
+      [order.shipment_id],
+    );
+
+    // Create tracking event
+    await client.query(
+      `INSERT INTO shipment_tracking_events (
+        shipment_id, event_type, event_status, event_notes
+      ) VALUES ($1, $2, $3, $4)`,
+      [
+        order.shipment_id,
+        "buyer_satisfied",
+        "satisfied",
+        "Buyer confirmed satisfaction",
+      ],
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      message: "Buyer satisfaction confirmed successfully",
+      data: {
+        order_id: orderId,
+        shipment_id: order.shipment_id,
+        buyer_satisfied: true,
+      },
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error confirming buyer satisfaction:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to confirm buyer satisfaction",
+    };
+  } finally {
+    client.release();
   }
 }

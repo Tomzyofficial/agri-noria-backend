@@ -8,6 +8,7 @@ import {
   cancelOrderController,
   getSellerOrderStatsController,
   getBuyerOrderStatsController,
+  confirmBuyerSatisfactionController,
 } from "../../controllers/buyer/orders.controller.js";
 
 const ordersRoute = express.Router();
@@ -36,5 +37,11 @@ ordersRoute.put("/orders/:id/status", updateOrderStatusController);
 
 // Cancel order
 ordersRoute.put("/orders/:id/cancel", cancelOrderController);
+
+// Confirm buyer satisfaction with OTP
+ordersRoute.post(
+  "/orders/:id/confirm-satisfaction",
+  confirmBuyerSatisfactionController,
+);
 
 export default ordersRoute;

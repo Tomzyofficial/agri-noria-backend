@@ -209,25 +209,25 @@ CREATE TABLE IF NOT EXISTS logistics_shipments (
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     
     logistics_company_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
-    vehicle_id UUID REFERENCES vehicles(id) ON DELETE SET NULL,
-    driver_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+   --  vehicle_id UUID REFERENCES vehicles(id) ON DELETE SET NULL,
+   --  driver_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
     
     status shipment_status_type DEFAULT 'pending',
     
     -- Location information
     pickup_location TEXT NOT NULL,
-    pickup_coordinates JSONB, -- {lat, lng}
-    pickup_scheduled_time TIMESTAMP WITH TIME ZONE,
-    pickup_completed_at TIMESTAMP WITH TIME ZONE,
+   --  pickup_coordinates JSONB, -- {lat, lng}
+   --  pickup_scheduled_time TIMESTAMP WITH TIME ZONE,
+   --  pickup_completed_at TIMESTAMP WITH TIME ZONE,
     
     delivery_location TEXT NOT NULL,
-    delivery_coordinates JSONB, -- {lat, lng}
+   --  delivery_coordinates JSONB, -- {lat, lng}
     estimated_delivery_time TIMESTAMP WITH TIME ZONE,
-    actual_delivery_time TIMESTAMP WITH TIME ZONE,
+   --  actual_delivery_time TIMESTAMP WITH TIME ZONE,
     
     -- Tracking information
-    current_location TEXT,
-    current_coordinates JSONB, -- {lat, lng}
+   --  current_location TEXT,
+   --  current_coordinates JSONB, -- {lat, lng}
     tracking_number VARCHAR(100) UNIQUE,
     
     -- Driver and vehicle information
@@ -245,14 +245,18 @@ CREATE TABLE IF NOT EXISTS logistics_shipments (
     delivery_otp_verified BOOLEAN DEFAULT false,
     delivery_otp_verified_at TIMESTAMP WITH TIME ZONE,
     
+    -- Buyer satisfaction
+    buyer_satisfied BOOLEAN DEFAULT false,
+    buyer_satisfied_at TIMESTAMP WITH TIME ZONE,
+    
     -- Dispatch information
     dispatch_notes TEXT,
     shipment_started_at TIMESTAMP WITH TIME ZONE,
     delivered_at TIMESTAMP WITH TIME ZONE,
     
     -- Shipment metadata
-    notes TEXT,
-    metadata JSONB DEFAULT '{}',
+   --  notes TEXT,
+   --  metadata JSONB DEFAULT '{}',
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -347,7 +351,7 @@ CREATE INDEX IF NOT EXISTS idx_escrow_releases_trigger_type ON escrow_releases(t
 -- ============================================
 -- DRIVERS TABLE (For logistics companies)
 -- ============================================
-CREATE TABLE IF NOT EXISTS drivers (
+/* CREATE TABLE IF NOT EXISTS drivers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
@@ -363,19 +367,19 @@ CREATE TABLE IF NOT EXISTS drivers (
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+); */
 
 -- Indexes for drivers
-CREATE INDEX IF NOT EXISTS idx_drivers_vendor_id ON drivers(vendor_id);
+/* CREATE INDEX IF NOT EXISTS idx_drivers_vendor_id ON drivers(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_drivers_vehicle_id ON drivers(vehicle_id);
-CREATE INDEX IF NOT EXISTS idx_drivers_status ON drivers(status);
+CREATE INDEX IF NOT EXISTS idx_drivers_status ON drivers(status); */
 
 -- Trigger for updated_at
-DROP TRIGGER IF EXISTS update_drivers_updated_at ON drivers;
+/* DROP TRIGGER IF EXISTS update_drivers_updated_at ON drivers;
 CREATE TRIGGER update_drivers_updated_at
 BEFORE UPDATE ON drivers
 FOR EACH ROW
-EXECUTE FUNCTION update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column(); */
 
 -- ============================================
 -- SHIPMENT TRACKING EVENTS TABLE (Real-time tracking)
@@ -389,10 +393,9 @@ CREATE TABLE IF NOT EXISTS shipment_tracking_events (
     event_status VARCHAR(50) NOT NULL,
     
     location TEXT,
-    coordinates JSONB, -- {lat, lng}
+   --  coordinates JSONB, -- {lat, lng}
     
     event_notes TEXT,
-    metadata JSONB DEFAULT '{}',
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -585,6 +588,15 @@ BEGIN
     
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'delivery_otp_verified_at') THEN
         ALTER TABLE logistics_shipments ADD COLUMN delivery_otp_verified_at TIMESTAMP WITH TIME ZONE;
+    END IF;
+    
+    -- Add buyer satisfaction columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'buyer_satisfied') THEN
+        ALTER TABLE logistics_shipments ADD COLUMN buyer_satisfied BOOLEAN DEFAULT false;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'buyer_satisfied_at') THEN
+        ALTER TABLE logistics_shipments ADD COLUMN buyer_satisfied_at TIMESTAMP WITH TIME ZONE;
     END IF;
     
     -- Add dispatch information columns

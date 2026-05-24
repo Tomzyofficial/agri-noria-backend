@@ -8,12 +8,13 @@ import {
   acceptLogisticsOrder,
   declineLogisticsOrder,
   getShipmentOrdersByLogisticsVendorId,
-  startLogisticsShipment,
+  //   startLogisticsShipment,
   getLogisticsOrderForVendor,
 } from "../../../db/logistics/logisiticsOperation.db.js";
 import {
   startShipmentTransaction,
   getShipmentByOrderId,
+  completeDeliveryWithOTP,
 } from "../../../db/logistics/shipment.db.js";
 
 import { saveFileToCloudinary } from "../../../lib/cloudinary.img.js";
@@ -359,7 +360,7 @@ logisiticsOperation.getLogisticsShipments = async (req, res) => {
   }
 };
 
-logisiticsOperation.startLogisticsShipment = async (req, res) => {
+/* logisiticsOperation.startLogisticsShipment = async (req, res) => {
   const payload = await verifyVendorToken(req);
   if (!payload?.id) {
     return res.status(401).json({ success: false, error: "Unauthorized" });
@@ -384,7 +385,7 @@ logisiticsOperation.startLogisticsShipment = async (req, res) => {
       .status(500)
       .json({ success: false, error: "Failed to start shipment" });
   }
-};
+}; */
 
 // Enhanced shipment start with full validation and confirmation
 logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
@@ -455,12 +456,12 @@ logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
       });
     }
 
-    //  if (pickup_confirmation !== true) {
-    //    return res.status(400).json({
-    //      success: false,
-    //      error: "Pickup confirmation must be checked",
-    //    });
-    //  }
+    if (!pickup_confirmation) {
+      return res.status(400).json({
+        success: false,
+        error: "Pickup confirmation must be checked",
+      });
+    }
 
     // Handle pickup photo upload
     let pickupPhotoUrl = null;
@@ -717,5 +718,58 @@ logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
     });
   }
 };  */
+
+// Complete delivery with OTP verification (logistics partner action)
+logisiticsOperation.completeDelivery = async (req, res) => {
+  const payload = await verifyVendorToken(req);
+  if (!payload?.id) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+  if (!isLogisticsPartner(payload)) {
+    return res.status(403).json({ success: false, error: "Forbidden" });
+  }
+
+  try {
+    const { orderId } = req.params;
+    const { otp } = req.body;
+
+    // Validate OTP
+    if (!otp || otp.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "OTP is required",
+      });
+    }
+
+    if (otp.length !== 6) {
+      return res.status(400).json({
+        success: false,
+        error: "OTP must be 6 digits",
+      });
+    }
+
+    const result = await completeDeliveryWithOTP(
+      orderId,
+      otp.trim(),
+      payload.id,
+    );
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Delivery completed successfully",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("Error completing delivery:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to complete delivery",
+    });
+  }
+};
 
 export default logisiticsOperation;

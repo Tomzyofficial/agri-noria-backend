@@ -13,6 +13,7 @@ import {
   getBuyerOrderStats,
 } from "../../db/buyer/orders.db.js";
 import { verifyBuyerToken } from "../../sessions/buyer.auth.session.js";
+import { confirmBuyerSatisfactionWithOTP } from "../../db/logistics/shipment.db.js";
 
 // Zod schema for order creation
 const orderSchema = z.object({
@@ -259,7 +260,6 @@ export async function getOrderByIdController(req, res) {
         message: "Order not found",
       });
     }
-
     res.status(200).json({
       success: true,
       data: result,
@@ -494,6 +494,62 @@ export async function getBuyerOrderStatsController(req, res) {
     res.status(500).json({
       success: false,
       error: "Failed to get buyer order statistics",
+    });
+  }
+}
+
+// Confirm buyer satisfaction with OTP verification
+export async function confirmBuyerSatisfactionController(req, res) {
+  try {
+    const payload = await verifyBuyerToken(req);
+
+    if (!payload) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { id: orderId } = req.params;
+    const { otp } = req.body;
+
+    console.log("order id from orders controller body", orderId, "otp", otp);
+
+    // Validate OTP
+    if (!otp || otp.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "OTP is required",
+      });
+    }
+
+    if (otp.length !== 6) {
+      return res.status(400).json({
+        success: false,
+        error: "OTP must be 6 digits",
+      });
+    }
+
+    const result = await confirmBuyerSatisfactionWithOTP(
+      orderId,
+      otp.trim(),
+      payload.buyer_id,
+    );
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Buyer satisfaction confirmed successfully",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("Error confirming buyer satisfaction:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to confirm buyer satisfaction",
     });
   }
 }

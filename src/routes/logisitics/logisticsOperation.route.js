@@ -50,15 +50,20 @@ logisticsOperationRoute.get(
   logisiticsOperationController.getLogisticsShipments,
 );
 
-logisticsOperationRoute.post(
-  "/orders/:orderId/start-shipment",
-  logisiticsOperationController.startLogisticsShipment,
-);
+// logisticsOperationRoute.post(
+//   "/orders/:orderId/start-shipment",
+//   logisiticsOperationController.startLogisticsShipment,
+// );
 
 logisticsOperationRoute.post(
   "/orders/:orderId/start-shipment-confirm",
   upload.single("pickup_photo"),
   logisiticsOperationController.startShipmentWithConfirmation,
+);
+
+logisticsOperationRoute.post(
+  "/orders/:orderId/complete-delivery",
+  logisiticsOperationController.completeDelivery,
 );
 
 export default logisticsOperationRoute;

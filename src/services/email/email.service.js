@@ -13,9 +13,11 @@ class EmailService {
     // prefer explicit host/port/secure values rather than using `service` with a hostname
     // set EMAIL_PORT to 465 (secure) or 587 (STARTTLS) and EMAIL_SECURE to "true" when using 465
     this.transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || "smtp.gmail.com",
-      port: process.env.EMAIL_PORT ? Number(process.env.EMAIL_PORT) : 587,
-      secure: process.env.EMAIL_SECURE === "true" || false, // true for 465, false for 587
+      pool: true,
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT,
+      secure: process.env.EMAIL_SECURE, // true for 465, false for 587
+      family: 4, // IPv4
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -181,7 +183,7 @@ class EmailService {
       const mailOptions = {
         from: `"${process.env.EMAIL_FROM_NAME || "Agri-Noria"}" <${process.env.EMAIL_USER}>`,
         to: buyerEmail,
-        subject: `Your Shipment Has Started - ${shipmentData.trackingNumber}`,
+        subject: `Your Shipment Has Started - ${shipmentData.tracking_number}`,
         html: generateShipmentStartTemplate({
           buyerName: shipmentData.buyer_name,
           orderNumber: shipmentData.order_number,
