@@ -338,7 +338,7 @@ async function updateSystemSettings(settings) {
 
 // Get institution-specific analytics for dashboard
 async function getInstitutionAnalytics() {
-   const [ecosystemStats, inputStats, walletStats] = await Promise.all([
+   const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats] = await Promise.all([
       pool.query(`
          SELECT 
             (SELECT COUNT(*) FROM programs) as active_programs,
@@ -360,6 +360,12 @@ async function getInstitutionAnalytics() {
             COALESCE(SUM(balance), 0) as total_balance,
             COALESCE(SUM(locked_balance), 0) as total_locked
          FROM wallets
+      `),
+      pool.query(`
+         SELECT id, label, status, color FROM system_health ORDER BY id ASC
+      `),
+      pool.query(`
+         SELECT id, title, deadline_date FROM upcoming_deadlines ORDER BY deadline_date ASC
       `)
    ]);
 
@@ -380,7 +386,18 @@ async function getInstitutionAnalytics() {
       wallets: {
          totalBalance: parseFloat(walletStats.rows[0].total_balance),
          totalLocked: parseFloat(walletStats.rows[0].total_locked)
-      }
+      },
+      systemHealth: healthStats.rows.map(row => ({
+         id: row.id,
+         label: row.label,
+         status: row.status,
+         color: row.color
+      })),
+      upcomingDeadlines: deadlinesStats.rows.map(row => ({
+         id: row.id,
+         title: row.title,
+         date: row.deadline_date
+      }))
    };
 }
 

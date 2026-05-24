@@ -198,11 +198,14 @@ async function getAllClusters() {
    const { rows } = await pool.query(
       `SELECT c.*, v.fname || ' ' || v.lname as supervisor_name, p.name as program_name,
        (SELECT COUNT(*) FROM cluster_members cm WHERE cm.cluster_id = c.id) as farmer_count,
+       COALESCE((SELECT SUM(fp.farm_size_hectares) FROM farmer_profiles fp JOIN cluster_members cm ON fp.id = cm.farmer_id WHERE cm.cluster_id = c.id), 0) as total_hectares,
        EXISTS(SELECT 1 FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved')) as has_pending_request,
        (SELECT funds_status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_funds_status,
        (SELECT items_status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_items_status,
        (SELECT status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_status,
-       (SELECT id FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as pending_request_id
+       (SELECT id FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as pending_request_id,
+       (SELECT w.balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_balance,
+       (SELECT w.locked_balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_locked_balance
        FROM clusters c
        LEFT JOIN vendors v ON c.supervisor_id = v.id
        LEFT JOIN programs p ON c.program_id = p.id

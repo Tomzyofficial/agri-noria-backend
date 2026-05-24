@@ -17,7 +17,8 @@ async function migrate() {
         'db-creation-ads.sql',
         'db-creation-email-verification.sql',
         'db-creation-training.sql',
-        'scratch/migrate_input_workflow.sql'
+        'scratch/migrate_input_workflow.sql',
+        'db-creation-dashboard.sql'
     ];
 
     try {
