@@ -91,13 +91,11 @@ loanControllerServices.submitLoanApplication = async (req, res) => {
     if (!result.success) {
       return res.status(400).json({ success: false, error: result.error });
     }
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Loan application submitted successfully",
-        data: result.data,
-      });
+    res.status(201).json({
+      success: true,
+      message: "Loan application submitted successfully",
+      data: result.data,
+    });
   } catch {
     res
       .status(500)
@@ -115,12 +113,10 @@ loanControllerServices.getAllLoanApplications = async (req, res) => {
     res.status(200).json({ success: true, data: loans });
   } catch (error) {
     console.error("Error fetching loan applications:", error.message);
-    res
-      .status(500)
-      .json({
-        message: "Failed to fetch loan applications",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Failed to fetch loan applications",
+      error: error.message,
+    });
   }
 };
 
@@ -134,12 +130,10 @@ loanControllerServices.initialize = async (req, res) => {
   const { loanId } = req.params;
 
   if (!amount || amount <= 0) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        error: "Invalid amount. Amount must be a positive number.",
-      });
+    return res.status(400).json({
+      success: false,
+      error: "Invalid amount. Amount must be a positive number.",
+    });
   }
 
   if (!email || typeof email !== "string") {
@@ -153,11 +147,11 @@ loanControllerServices.initialize = async (req, res) => {
   }
   // For paystack callback
   const accountTypeRoutes = {
-    farmer: "/dashboard/store/",
-    seller: "/dashboard/store/",
-    storage_facility: "/dashboard/sub-store/",
-    logistics: "/dashboard/logistics/",
-    admin: "/dashboard/admin/",
+    farmer: "/markteplace/store/",
+    seller: "/marketplace/store/",
+    "storage facility": "/marketplace/storage-facility/",
+    logistics: "/marketplace/logistics/",
+    admin: "/marketplace/admin/",
   };
   const targetRoute = accountTypeRoutes[payload.account_type?.toLowerCase()];
 
@@ -181,12 +175,10 @@ loanControllerServices.initialize = async (req, res) => {
     });
   } catch (error) {
     console.error("Payment initialization error:", error.message);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: error.message || "Failed to initialize payment",
-      });
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to initialize payment",
+    });
   }
 };
 

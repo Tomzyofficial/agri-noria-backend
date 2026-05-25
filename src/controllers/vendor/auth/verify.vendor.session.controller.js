@@ -35,7 +35,8 @@ export async function verifyVendor(req, res) {
       fname: payload.fname,
       lname: payload.lname,
       email: payload.email,
-      account_type: user?.account_type || payload.account_type,
+      workspace: payload.workspace,
+      role: payload.role,
       onboarding_status: onboardingStatus,
     });
   } catch (error) {

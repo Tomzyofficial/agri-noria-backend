@@ -39,8 +39,8 @@ const ORDER_STATUSES = [
 ];
 
 function isLogisticsPartner(payload) {
-  const type = payload?.account_type?.toLowerCase?.();
-  return type === "logistics_partner";
+  const type = payload?.role?.toLowerCase?.();
+  return type === "logistics";
 }
 
 logisiticsOperation.addVehicle = async (req, res) => {
