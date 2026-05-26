@@ -10,24 +10,18 @@ trainingRoute.post(
   trainingController.createTraining,
 );
 
-trainingRoute.delete("/:trainingId", trainingController.deleteTraining);
-
 trainingRoute.get("/overview", trainingController.getTrainingsByVendor);
-
 trainingRoute.get("/list", trainingController.getTrainingsWithStatus);
-
+trainingRoute.get("/enrollments", trainingController.getFarmerEnrollmentsCount);
+trainingRoute.delete("/:trainingId", trainingController.deleteTraining);
 trainingRoute.post(
   "/:trainingId/enroll",
   trainingController.enrollFarmerInTraining,
 );
-
-trainingRoute.get(
-  "/total-enrollments",
-  trainingController.countEnrolledFarmersByTrainer,
-);
-
-trainingRoute.get("/enrollments", trainingController.getFarmerEnrollmentsCount);
-
+// trainingRoute.get(
+//   "/total-enrollments",
+//   trainingController.countEnrolledFarmersByTrainer,
+// );
 // Agora Live Session Routes
 trainingRoute.post("/:trainingId/start", trainingController.startTraining);
 trainingRoute.post("/:trainingId/end", trainingController.endTraining);

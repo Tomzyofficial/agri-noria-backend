@@ -60,13 +60,15 @@ export async function deleteTraining(trainingId, vendorId) {
     );
 
     if (trainingResult.rows.length === 0) {
+      await client.query("ROLLBACK");
       return { success: false, error: "Training not found or unauthorized" };
     }
 
     const { status, thumbnail } = trainingResult.rows[0];
 
     // Prevent deletion of live training sessions
-    if (status === "live") {
+    if (String(status).toUpperCase() === "LIVE") {
+      await client.query("ROLLBACK");
       return { success: false, error: "Cannot delete a live training session" };
     }
 
@@ -74,6 +76,7 @@ export async function deleteTraining(trainingId, vendorId) {
     if (thumbnail && thumbnail.includes("cloudinary.com")) {
       const deleteResult = await deleteFileFromCloudinary(thumbnail);
       if (!deleteResult || deleteResult.result !== "ok") {
+        await client.query("ROLLBACK");
         return {
           success: false,
           error: "Failed to delete thumbnail from Cloudinary",
@@ -101,14 +104,29 @@ export async function deleteTraining(trainingId, vendorId) {
   }
 }
 
-// Fetch trainings created by a specific Training partner. This will be used in the Training partner dashboard to list all trainings created by the trainer and also to manage them (edit, delete, view enrolled farmers, etc)
+// Fetch trainings created by a specific Training partner. Count individual enrolled farmers for a training and total enrollment for a specific trainer
 export async function getTrainingsByVendor(vendorId) {
   try {
-    const result = await pool.query(
-      `SELECT t.id, t.title, t.description, t.thumbnail, t.scheduled_at, t.duration_minutes, t.status, t.max_participants, t.agora_channel_name, COUNT(te.farmer_id) AS enrolled_count FROM trainings t LEFT JOIN training_enrollments te ON t.id = te.training_id WHERE t.trainer_id = $1 GROUP BY t.id ORDER BY t.scheduled_at DESC`,
-      [vendorId],
-    );
-    return { success: true, data: result.rows, total: result.rows.length };
+    const [result, totalEnrolledFarmersResult] = await Promise.all([
+      pool.query(
+        `SELECT t.id, t.title, t.description, t.thumbnail, t.scheduled_at, t.duration_minutes, t.status, t.max_participants, t.agora_channel_name, COUNT(te.farmer_id) AS enrolled_count FROM trainings t LEFT JOIN training_enrollments te ON t.id = te.training_id WHERE t.trainer_id = $1 GROUP BY t.id ORDER BY t.scheduled_at DESC`,
+        [vendorId],
+      ),
+      pool.query(
+        `SELECT COUNT(te.farmer_id) AS total_enrollment FROM trainings t LEFT JOIN training_enrollments te ON t.id = te.training_id WHERE t.trainer_id = $1`,
+        [vendorId],
+      ),
+    ]);
+
+    const totalEnrolledFarmers =
+      totalEnrolledFarmersResult.rows[0]?.total_enrollment || 0;
+    const totalTrainings = result.rows.length;
+    return {
+      success: true,
+      data: result.rows,
+      total: totalTrainings,
+      totalEnrolledFarmers,
+    };
   } catch (error) {
     console.error("Error fetching trainings by vendor:", error);
     return {
@@ -174,12 +192,21 @@ export async function isFarmerEnrolled(trainingId, farmerId) {
 }
 
 // Update training status when training starts
-export async function startTraining(trainingId) {
+export async function startTraining(trainingId, trainerId) {
   try {
     const result = await pool.query(
-      `UPDATE trainings SET status = 'LIVE', started_at = NOW() WHERE id = $1 AND status = 'UPCOMING' RETURNING *`,
-      [trainingId],
+      `UPDATE trainings
+       SET status = 'LIVE', started_at = NOW()
+       WHERE id = $1 AND trainer_id = $2 AND status = 'UPCOMING'
+       RETURNING *`,
+      [trainingId, trainerId],
     );
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: "Training not found, unauthorized, or not ready to start",
+      };
+    }
     return { success: true, data: result.rows[0] };
   } catch (error) {
     console.error("Error starting training:", error);
@@ -191,12 +218,21 @@ export async function startTraining(trainingId) {
 }
 
 // Update training status when training ends
-export async function endTraining(trainingId) {
+export async function endTraining(trainingId, trainerId) {
   try {
     const result = await pool.query(
-      `UPDATE trainings SET status = 'COMPLETED', ended_at = NOW() WHERE id = $1 AND status = 'LIVE' RETURNING *`,
-      [trainingId],
+      `UPDATE trainings
+       SET status = 'COMPLETED', ended_at = NOW()
+       WHERE id = $1 AND trainer_id = $2 AND status = 'LIVE'
+       RETURNING *`,
+      [trainingId, trainerId],
     );
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: "Training not found, unauthorized, or not currently live",
+      };
+    }
     return { success: true, data: result.rows[0] };
   } catch (error) {
     console.error("Error ending training:", error);
@@ -219,6 +255,7 @@ export async function getTrainingWithEnrollmentStatus(trainingId, farmerId) {
           WHERE t.id = $1`,
       [trainingId, farmerId],
     );
+
     return { success: true, data: result.rows[0] };
   } catch (error) {
     console.error("Error getting training with enrollment status:", error);

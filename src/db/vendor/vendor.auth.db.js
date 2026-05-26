@@ -5,7 +5,7 @@ async function getUserByEmail(email) {
     "SELECT id, email, fname, lname, pword, workspace, role, is_suspended, onboarding_status FROM vendors WHERE email = $1 LIMIT 1",
     [email],
   );
-  return rows[0] || null;
+  return rows[0];
 }
 
 // Create user

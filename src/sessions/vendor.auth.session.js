@@ -60,7 +60,6 @@ export async function verifyVendorToken(req) {
     const { payload } = await jwtVerify(token, encodedKey, {
       algorithms: ["HS256"],
     });
-    console.log(payload);
     return payload;
   } catch {
     return null;

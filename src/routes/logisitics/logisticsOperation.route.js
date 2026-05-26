@@ -11,6 +11,11 @@ logisticsOperationRoute.post(
 );
 
 logisticsOperationRoute.get(
+  "/public/vehicles",
+  logisiticsOperationController.getListedVehicles,
+);
+
+logisticsOperationRoute.get(
   "/vehicles",
   logisiticsOperationController.getVehicles,
 );

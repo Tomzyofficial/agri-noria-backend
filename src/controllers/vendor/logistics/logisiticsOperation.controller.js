@@ -1,6 +1,7 @@
 import {
   addVehicle,
   getVehicles,
+  getListedVehicles,
   getLogisticsProvidersNearBuyer,
   getOrdersByLogisticsVendorId,
   getLogisticsOrderStats,
@@ -146,6 +147,36 @@ logisiticsOperation.getVehicles = async (req, res) => {
   } catch (error) {
     console.error("Error", error);
     return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+logisiticsOperation.getListedVehicles = async (req, res) => {
+  let country_code;
+  const userLocationCookie = req.cookies?.user_location;
+  if (userLocationCookie) {
+    const locationData = JSON.parse(userLocationCookie);
+    country_code = locationData.country_code;
+  }
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 100);
+    const offset = parseInt(req.query.offset, 10) || 0;
+
+    const result = await getListedVehicles({ country_code, limit, offset });
+    if (!result.success) {
+      return res.status(500).json({ success: false, error: result.error });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: result.vehicles,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    console.error("Error fetching listed vehicles:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error occurred. Try again.",
+    });
   }
 };
 

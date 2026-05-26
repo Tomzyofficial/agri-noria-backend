@@ -66,6 +66,70 @@ export async function getVehicles(vendorId) {
   }
 }
 
+// Get vehicles for public
+export async function getListedVehicles({
+  country_code,
+  limit = 100,
+  offset = 0,
+} = {}) {
+  try {
+    const queryText = `
+      SELECT
+        veh.id,
+        veh.vendor_id,
+        veh.title,
+        veh.vehicle_type,
+        veh.cargo_type,
+        veh.max_weight_kg,
+        veh.volume_cubic_meters,
+        veh.base_location,
+        veh.operating_regions,
+        veh.pricing_model,
+        veh.rate_amount,
+        veh.images,
+        veh.status,
+        veh.created_at,
+        v.fname AS logistics_provider_fname,
+        v.lname AS logistics_provider_lname,
+        vd.business_name AS logistics_business_name,
+        cu.country_code,
+        cu.currency
+      FROM vehicles veh
+      LEFT JOIN vendors v ON veh.vendor_id = v.id
+      LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
+      LEFT JOIN country_utils cu ON cu.vendor_id = v.id
+      WHERE cu.country_code = $1
+      ORDER BY
+        CASE COALESCE(veh.status, 'available')
+          WHEN 'available' THEN 0
+          WHEN 'in_transit' THEN 1
+          WHEN 'maintenance' THEN 2
+          ELSE 3
+        END,
+        veh.created_at DESC
+      LIMIT $2 OFFSET $3;
+    `;
+
+    const result = await pool.query(queryText, [country_code, limit, offset]);
+
+    return {
+      success: true,
+      vehicles: result.rows,
+      pagination: {
+        limit,
+        offset,
+        count: result.rows.length,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching listed vehicles:", error);
+    return {
+      success: false,
+      error: "Internal server error. Failed to retrieve listed vehicles",
+    };
+  }
+}
+
 // Show logistics provider available close to the buyer's delivery address during checkout
 export async function getLogisticsProvidersNearBuyer(address) {
   try {
@@ -81,6 +145,7 @@ export async function getLogisticsProvidersNearBuyer(address) {
       providers: result.rows,
     };
   } catch (error) {
+    console.error("Error retrieving logistics providers:", error);
     return {
       success: false,
       error: "Internal server error. Failed to retrieve logistics providers",
@@ -471,16 +536,6 @@ export async function getOrderDataForEmails(orderId) {
     const buyerName = [buyerInfo.fname, buyerInfo.lname]
       .filter(Boolean)
       .join(" ");
-    const sellerName = [vendorInfo.seller_fname, vendorInfo.seller_lname]
-      .filter(Boolean)
-      .join(" ");
-    const logisticsName = [
-      logisticsInfo.logistics_fname,
-      logisticsInfo.logistics_lname,
-    ]
-      .filter(Boolean)
-      .join(" ");
-
     return {
       success: true,
       data: {

@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS vendors (
   lname character varying NOT NULL,
   email character varying UNIQUE NOT NULL,
   phone character varying NOT NULL,
-  account_type character varying NOT null,
   pword character varying not null,
   terms_of_service boolean not null,
   profile_image_url TEXT,
@@ -19,7 +18,9 @@ CREATE TABLE IF NOT EXISTS vendors (
   is_verified boolean DEFAULT false,
   onboarding_status VARCHAR(50) DEFAULT 'pending', -- pending, completed, verified
   verified_at TIMESTAMP WITH TIME ZONE,
-  is_suspended BOOLEAN DEFAULT false
+  is_suspended BOOLEAN DEFAULT false,
+  workspace TEXT,
+  role TEXT
 );
 
 -- Users table (core profile)
