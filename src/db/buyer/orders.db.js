@@ -123,88 +123,20 @@ export async function updateOrderDelivery(orderId, deliveryData) {
   return result.rows[0];
 }
 
-// Get order with items
-/* export async function getOrderWithItems(orderId) {
-  const orderQuery = `
-    SELECT 
-      o.*,
-      b.email as buyer_email,
-      b.name as buyer_name,
-      b.phone as buyer_phone,
-      v.fname as seller_fname,
-      v.lname as seller_lname,
-      v.email as seller_email,
-      v.phone as seller_phone
-    FROM orders o
-    LEFT JOIN buyers b ON o.buyer_id = b.buyer_id
-    LEFT JOIN vendors v ON o.seller_id = v.id
-    WHERE o.id = $1
-  `;
-
-  const itemsQuery = `
-    SELECT * FROM order_items
-    WHERE order_id = $1
-    ORDER BY created_at
-  `;
-
-  const [orderResult, itemsResult] = await Promise.all([
-    pool.query(orderQuery, [orderId]),
-    pool.query(itemsQuery, [orderId]),
-  ]);
-
-  return {
-    order: orderResult.rows[0],
-    items: itemsResult.rows,
-  };
-} */
-
-// Create order items
-/* export async function createOrderItems(orderId, items) {
-  const query = `
-    INSERT INTO order_items (
-      order_id, product_id, quantity, unit_price,
-      packaging_type, unit_measure, product_name, product_image
-    ) VALUES ${items.map((_, i) => `($1, $${i * 8 + 2}, $${i * 8 + 3}, $${i * 8 + 4}, $${i * 8 + 5}, $${i * 8 + 6}, $${i * 8 + 7}, $${i * 8 + 8})`).join(", ")}
-    RETURNING *
-  `;
-
-  const values = [
-    orderId,
-    ...items.flatMap((item) => [
-      item.product_id,
-      item.quantity,
-      item.unit_price,
-      item.packaging_type,
-      item.unit_measure,
-      item.product_name,
-      item.product_image,
-    ]),
-  ];
-
-  const result = await pool.query(query, values);
-  return result.rows;
-} */
-
 // Delete order (soft delete by updating status) by logistics vendor
 export async function cancelOrder(orderId, reason) {
   const query = `
-    UPDATE orders
-    SET 
-      status = 'cancelled',
-      notes = COALESCE($1, notes),
-      updated_at = NOW()
-    WHERE id = $2 AND status NOT IN ('completed', 'delivered')
-    RETURNING *
-  `;
-
+    UPDATE orders SET status = 'cancelled', notes = COALESCE($1, notes), updated_at = NOW()
+    WHERE id = $2 AND status NOT IN ('completed', 'delivered') RETURNING *`;
   const result = await pool.query(query, [reason, orderId]);
   return result.rows[0];
 }
 
-// Get order statistics for seller
+// Get order statistics for seller/farmer
 export async function getSellerOrderStats(sellerId) {
-  const query = `
-    SELECT 
+  const statsQuery = `
+    SELECT metadata->'item_breakdown'->0->>'country_code' AS country_code,
+      metadata->'item_breakdown'->0->>'currency' AS currency,
       COUNT(*) as total_orders,
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_orders,
       COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_orders,
@@ -214,13 +146,46 @@ export async function getSellerOrderStats(sellerId) {
       COUNT(CASE WHEN status = 'delivered' THEN 1 END) as delivered_orders,
       COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_orders,
       COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_orders,
-      COALESCE(SUM(CASE WHEN status = 'completed' THEN total_amount ELSE 0 END), 0) as total_revenue
+      COALESCE(SUM(CASE WHEN status = 'delivered' THEN (metadata->'amount_breakdown'->>'subtotal')::numeric ELSE 0 END), 0) as total_revenue
+    FROM orders
+    WHERE seller_id = $1
+    GROUP BY 
+      metadata->'item_breakdown'->0->>'country_code',
+      metadata->'item_breakdown'->0->>'currency'
+  `;
+
+  // date_trunc function used to return the first ocurrance of the precision (month in this case)
+  const metric = `SELECT SUM(CASE WHEN created_at >= date_trunc('month', CURRENT_DATE)
+   THEN (metadata->'amount_breakdown'->>'subtotal')::numeric ELSE 0 END) AS current_month_sales,
+  SUM(CASE WHEN created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+   AND created_at < date_trunc('month', CURRENT_DATE)
+   THEN (metadata->'amount_breakdown'->>'subtotal')::numeric ELSE 0 END) AS previous_month_sales
+   FROM orders
+   WHERE seller_id = $1;`;
+
+  const activeBuyers = `
+    SELECT 
+      COUNT(DISTINCT buyer_id) as active_buyers
     FROM orders
     WHERE seller_id = $1
   `;
 
-  const result = await pool.query(query, [sellerId]);
-  return result.rows[0];
+  const totalOrders = `SELECT COUNT(*) as total_orders FROM orders WHERE seller_id = $1`;
+
+  const [statsResult, metricResult, activeBuyersResult, totalOrdersResult] =
+    await Promise.all([
+      pool.query(statsQuery, [sellerId]),
+      pool.query(metric, [sellerId]),
+      pool.query(activeBuyers, [sellerId]),
+      pool.query(totalOrders, [sellerId]),
+    ]);
+  return {
+    ...statsResult.rows[0],
+    active_buyers: activeBuyersResult.rows[0].active_buyers,
+    current_month_sales: metricResult.rows[0].current_month_sales,
+    previous_month_sales: metricResult.rows[0].previous_month_sales,
+    total_orders: totalOrdersResult.rows[0].total_orders,
+  };
 }
 
 // Get order statistics for buyer

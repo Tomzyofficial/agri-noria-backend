@@ -14,6 +14,7 @@ import {
 } from "../../db/buyer/orders.db.js";
 import { verifyBuyerToken } from "../../sessions/buyer.auth.session.js";
 import { confirmBuyerSatisfactionWithOTP } from "../../db/logistics/shipment.db.js";
+import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 // Zod schema for order creation
 const orderSchema = z.object({
@@ -446,16 +447,15 @@ export async function cancelOrderController(req, res) {
 // Get seller order statistics
 export async function getSellerOrderStatsController(req, res) {
   try {
-    const { seller_id } = req.params;
-
-    if (!seller_id) {
-      return res.status(400).json({
+    const payload = await verifyVendorToken(req);
+    if (!payload) {
+      return res.status(401).json({
         success: false,
-        message: "Seller ID is required",
+        message: "Unauthorized",
       });
     }
 
-    const stats = await getSellerOrderStats(seller_id);
+    const stats = await getSellerOrderStats(payload.id);
 
     res.status(200).json({
       success: true,

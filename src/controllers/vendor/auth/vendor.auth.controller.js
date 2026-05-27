@@ -127,9 +127,7 @@ vendorAuthController.signin = async (req, res) => {
     return res.status(500).json({
       success: false,
       token: null,
-      error: error.message || [
-        "An error occurred during sign in. Please try again.",
-      ],
+      error: ["Internal server error. Please try again."],
     });
   }
 };
@@ -268,7 +266,7 @@ vendorAuthController.register = async (req, res) => {
       },
     });
   } catch (error) {
-    const token = await createVendorSession(res, {
+    await createVendorSession(res, {
       user: {
         id: null,
         email: null,
@@ -281,10 +279,7 @@ vendorAuthController.register = async (req, res) => {
     return res.status(500).json({
       success: false,
       token: null,
-      error: [
-        error.message ||
-          "An error occurred during registration. Please try again.",
-      ],
+      error: ["Internal server error. Please try again."],
     });
   }
 };
