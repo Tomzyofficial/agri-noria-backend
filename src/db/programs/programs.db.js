@@ -37,9 +37,12 @@ async function createProgram(data) {
 // Get all programs
 async function getAllPrograms() {
    const { rows } = await pool.query(
-      `SELECT p.*, v.fname || ' ' || v.lname as creator_name
+      `SELECT p.*, v.fname || ' ' || v.lname as creator_name,
+        COUNT(DISTINCT fp.id) as enrolled_farmers
        FROM programs p 
        LEFT JOIN vendors v ON p.created_by = v.id
+       LEFT JOIN farmer_profiles fp ON fp.program_id = p.id
+       GROUP BY p.id, v.id
        ORDER BY p.created_at DESC`
    );
    return rows;

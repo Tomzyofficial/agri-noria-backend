@@ -12,10 +12,11 @@ superAdminRoute.get("/admin/dashboard/stats", requireSuperAdmin, superAdminContr
 superAdminRoute.get("/admin/analytics", requireSuperAdmin, superAdminController.getSystemAnalytics);
 superAdminRoute.get("/admin/finance-wallets", requireFinanceOrAdmin, superAdminController.getFinanceWallets);
 superAdminRoute.get("/admin/wallet-transactions", requireFinanceOrAdmin, superAdminController.getWalletTransactions);
-superAdminRoute.get("/admin/agreements", requireSuperAdmin, superAdminController.getAllAgreements);
+superAdminRoute.get("/admin/agreements", requireFinanceOrAdmin, superAdminController.getAllAgreements);
+superAdminRoute.get("/admin/all-agreements", requireFinanceOrAdmin, superAdminController.getAllAgreements);
 superAdminRoute.get("/admin/escrow-payments", requireSuperAdmin, superAdminController.getAllEscrowPayments);
-superAdminRoute.get("/admin/aggregator-buyers", requireSuperAdmin, superAdminController.getAggregatorBuyers);
-superAdminRoute.get("/admin/aggregator-stats", requireSuperAdmin, superAdminController.getAggregatorsWithStats);
+superAdminRoute.get("/admin/aggregator-buyers", requireFinanceOrAdmin, superAdminController.getAggregatorBuyers);
+superAdminRoute.get("/admin/aggregator-stats", requireFinanceOrAdmin, superAdminController.getAggregatorsWithStats);
 superAdminRoute.get("/admin/audit-logs", requireSuperAdmin, superAdminController.getAuditLogs);
 superAdminRoute.get("/admin/settings", requireSuperAdmin, superAdminController.getSettings);
 superAdminRoute.put("/admin/settings", requireSuperAdmin, superAdminController.updateSettings);
