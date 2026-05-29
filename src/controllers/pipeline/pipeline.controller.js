@@ -486,7 +486,7 @@ pipelineController.submitInputItems = async (req, res) => {
       // Validate selected items cost against locked funds for cluster requests
       const pool = (await import("../../lib/connect.js")).default;
       const { rows: reqData } = await pool.query(
-         `SELECT ir.cluster_id, ir.farmer_id, ir.is_cluster_request, ir.requester_type,
+         `SELECT ir.cluster_id, ir.farmer_id, ir.is_cluster_request, ir.requester_type, ir.requester_id,
           (SELECT SUM(fp.farm_size_hectares) FROM farmer_profiles fp 
            JOIN cluster_members cm ON fp.id = cm.farmer_id 
            WHERE cm.cluster_id = ir.cluster_id) as cluster_hectares,
@@ -518,10 +518,6 @@ pipelineController.submitInputItems = async (req, res) => {
       // Check locked funds for cluster requests
       if (request.is_cluster_request && request.cluster_id) {
          let wallet = await getWalletByOwner(request.cluster_id, "cluster");
-         if (request.requester_type === 'aggregator') {
-             wallet = await getWalletByOwner(request.requester_id, "aggregator");
-         }
-         
          const lockedBalance = wallet ? parseFloat(wallet.locked_balance) : 0;
          if (totalCost > lockedBalance) {
             return res.status(400).json({
