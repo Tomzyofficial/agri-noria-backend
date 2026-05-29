@@ -97,7 +97,7 @@ vendorAuthController.signin = async (req, res) => {
         fname: vendor.fname,
         lname: vendor.lname,
         workspace: vendor.workspace,
-        role: vendor.role,
+        role: vendor.role || vendor.account_type,
       },
       rememberMe,
     });

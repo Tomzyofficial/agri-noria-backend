@@ -7,6 +7,7 @@ import {
    upsertVendorBankAccount,
    getRatings,
    finalizeOnboarding,
+   updateVendorBasicInfo,
 } from "../../db/vendor/profile.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
@@ -344,6 +345,28 @@ profileController.completeOnboarding = async (req, res) => {
          success: false,
          error: error.message || "Failed to finalize onboarding",
       });
+   }
+};
+
+profileController.updateBasicInfo = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { fname, lname, phone } = req.body;
+      const updatedUser = await updateVendorBasicInfo(payload.id, fname, lname, phone);
+      if (!updatedUser) {
+         return res.status(400).json({ success: false, error: "Failed to update profile information" });
+      }
+
+      return res.status(200).json({
+         success: true,
+         message: "Profile updated successfully",
+         data: updatedUser
+      });
+   } catch (error) {
+      console.error("Error updating basic info:", error);
+      return res.status(500).json({ success: false, error: "Failed to update profile" });
    }
 };
 

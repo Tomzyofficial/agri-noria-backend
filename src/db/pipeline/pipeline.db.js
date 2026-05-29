@@ -474,6 +474,16 @@ async function updateInputRequestItems(requestId, input_items) {
        WHERE id = $3 RETURNING *`,
       [JSON.stringify(input_items), totalValue, requestId]
    );
+
+   const ownerId = reqData[0].requester_type === 'farmer' ? reqData[0].farmer_id : reqData[0].cluster_id;
+   const ownerType = reqData[0].requester_type === 'farmer' ? 'farmer' : 'cluster';
+   await pool.query(
+      `UPDATE wallets 
+       SET locked_balance = GREATEST(0, locked_balance - $1), updated_at = now() 
+       WHERE owner_id = $2 AND owner_type = $3`,
+      [totalValue, ownerId, ownerType]
+   );
+
    return rows[0];
 }
 
@@ -817,7 +827,7 @@ async function updateRepayment(repaymentId, recoveredAmount) {
 async function getPipelineStats() {
    const client = await pool.connect();
    try {
-      const [farmers, programs, clusters, pendingInputs, verifications, sales, walletTotal, deployed] = await Promise.all([
+      const [farmers, programs, clusters, pendingInputs, verifications, sales, walletTotal, deployed, repayments, distribution] = await Promise.all([
          client.query("SELECT COUNT(*) as count FROM vendors WHERE LOWER(account_type) = 'farmer'"),
          client.query("SELECT COUNT(*) as count FROM programs WHERE status = 'active'"),
          client.query("SELECT COUNT(*) as count FROM clusters WHERE status = 'active'"),
@@ -826,6 +836,11 @@ async function getPipelineStats() {
          client.query("SELECT COALESCE(SUM(sale_amount),0) as total FROM sales"),
          client.query("SELECT COALESCE(SUM(balance),0) as total, COALESCE(SUM(locked_balance),0) as locked FROM wallets"),
          client.query("SELECT COALESCE(SUM(total_value),0) as total FROM input_requests WHERE funds_status = 'approved'"),
+         client.query("SELECT COALESCE(SUM(recovered_amount),0) as recovered, COALESCE(SUM(financing_amount),0) as total FROM repayments"),
+         client.query(`SELECT 
+            COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' THEN 1 END), 0) as seed_pct,
+            COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' THEN 1 END), 0) as fert_pct
+            FROM input_requests`)
       ]);
       return {
          activeFarmers: parseInt(farmers.rows[0].count),
@@ -837,6 +852,10 @@ async function getPipelineStats() {
          totalWalletBalance: parseFloat(walletTotal.rows[0].total),
          totalLockedFunds: parseFloat(walletTotal.rows[0].locked),
          totalDeployed: parseFloat(deployed.rows[0].total),
+         repaymentsRecovered: parseFloat(repayments.rows[0].recovered),
+         repaymentsTotal: parseFloat(repayments.rows[0].total),
+         seedDisbursementPct: parseFloat(distribution.rows[0].seed_pct || 0),
+         fertilizerAllocationPct: parseFloat(distribution.rows[0].fert_pct || 0),
       };
    } finally {
       client.release();
@@ -988,13 +1007,13 @@ async function getEcosystemOrdersByDistributor(distributorId) {
 }
 
 async function markOrderDelivered(orderId) {
-    await pool.query(
-       "UPDATE buyer_ecosystem_orders SET status = 'delivered', updated_at = now() WHERE id = $1",
-       [orderId]
-    );
-    return true;
- }
- 
+   await pool.query(
+      "UPDATE buyer_ecosystem_orders SET status = 'delivered', updated_at = now() WHERE id = $1",
+      [orderId]
+   );
+   return true;
+}
+
 async function getDistributorStats(distributorId) {
    const { rows } = await pool.query(
       `SELECT 
@@ -1008,7 +1027,7 @@ async function getDistributorStats(distributorId) {
        WHERE distributor_id = $1`,
       [distributorId]
    );
-   
+
    const historyRes = await pool.query(
       `SELECT 
          TO_CHAR(created_at, 'Mon YYYY') as period,

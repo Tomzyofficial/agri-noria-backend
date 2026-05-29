@@ -33,4 +33,7 @@ profileRoute.get("/product-ratings", profileController.ratings);
 // Complete onboarding
 profileRoute.post("/complete-onboarding", profileController.completeOnboarding);
 
+// Update basic info (fname, lname, phone)
+profileRoute.patch("/update-basic-info", profileController.updateBasicInfo);
+
 export default profileRoute;
