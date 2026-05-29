@@ -68,7 +68,7 @@ export const aggregatorDb = {
    },
    getAgreementByToken: async (token) => {
       const res = await pool.query(
-         "SELECT ag.*, p.company_name as aggregator_company, v.fname as aggregator_fname, v.lname as aggregator_lname, v.email as aggregator_email, b.buyer_name, b.buyer_email FROM buyer_agreements ag JOIN aggregator_profiles p ON ag.aggregator_id = p.vendor_id JOIN vendors v ON v.id = p.vendor_id JOIN aggregator_buyers b ON b.id = ag.buyer_id WHERE ag.secure_token = $1 OR ag.payment_token = $1",
+         "SELECT ag.*, p.company_name as aggregator_company, v.fname as aggregator_fname, v.lname as aggregator_lname, v.email as aggregator_email, b.buyer_name, b.buyer_email, b.buyer_phone, b.company_name as company_name, b.company_name as buyer_company, b.address as buyer_address FROM buyer_agreements ag JOIN aggregator_profiles p ON ag.aggregator_id = p.vendor_id JOIN vendors v ON v.id = p.vendor_id JOIN aggregator_buyers b ON b.id = ag.buyer_id WHERE ag.secure_token = $1 OR ag.payment_token = $1",
          [token]
       );
       return res.rows[0];

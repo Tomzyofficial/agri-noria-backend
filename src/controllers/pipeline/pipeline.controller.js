@@ -353,8 +353,9 @@ pipelineController.createInputRequest = async (req, res) => {
          const allClusters = await getAllClusters();
          const cluster = allClusters.find(c => c.id === cluster_id);
          if (!cluster) return res.status(404).json({ success: false, error: "Cluster not found" });
-         if (cluster.supervisor_id !== payload.id && payload.account_type?.toLowerCase() !== 'super admin') {
-            return res.status(403).json({ success: false, error: "Only the cluster supervisor can make cluster-wide requests" });
+         const role = payload.account_type?.toLowerCase();
+         if (cluster.supervisor_id !== payload.id && role !== 'super admin' && role !== 'aggregator') {
+            return res.status(403).json({ success: false, error: "Only the cluster supervisor or aggregator can make cluster-wide requests" });
          }
       }
 
@@ -365,7 +366,7 @@ pipelineController.createInputRequest = async (req, res) => {
          cluster_id: targetClusterId,
          total_value: totalValue,
          requester_id: req.body.requester_id || payload.id,
-         requester_type: req.body.requester_type || (is_cluster_request ? 'cluster_manager' : 'farmer'),
+         requester_type: (payload.account_type?.toLowerCase() === 'aggregator') ? 'aggregator' : (req.body.requester_type || (is_cluster_request ? 'cluster_manager' : 'farmer')),
          training_completed: true
       });
       return res.status(201).json({ success: true, data: request });
@@ -442,14 +443,23 @@ pipelineController.approveFunds = async (req, res) => {
       const pool = (await import("../../lib/connect.js")).default;
 
       if (result.is_cluster_request) {
-         const clusterWallet = await getWalletByOwner(result.cluster_id, "cluster");
+         let clusterWallet = await getWalletByOwner(result.cluster_id, "cluster");
+         if (!clusterWallet) {
+             clusterWallet = await createWallet(result.cluster_id, "cluster");
+             // If ON CONFLICT prevented insert and returned null, fetch again
+             if (!clusterWallet) clusterWallet = await getWalletByOwner(result.cluster_id, "cluster");
+         }
          if (clusterWallet) {
             await depositLockedFunds(clusterWallet.id, parseFloat(result.total_value), "Input financing approved", result.id, "input_request");
          }
       } else {
          const { rows } = await pool.query("SELECT vendor_id FROM farmer_profiles WHERE id = $1", [result.farmer_id]);
          if (rows.length > 0) {
-            const farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
+            let farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
+            if (!farmerWallet) {
+                farmerWallet = await createWallet(rows[0].vendor_id, "farmer");
+                if (!farmerWallet) farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
+            }
             if (farmerWallet) {
                await depositLockedFunds(farmerWallet.id, parseFloat(result.total_value), "Input financing approved", result.id, "input_request");
             }
@@ -472,6 +482,68 @@ pipelineController.submitInputItems = async (req, res) => {
       if (!selectedItems || !Array.isArray(selectedItems)) {
          return res.status(400).json({ success: false, error: "Missing or invalid items array" });
       }
+
+      // Validate selected items cost against locked funds for cluster requests
+      const pool = (await import("../../lib/connect.js")).default;
+      const { rows: reqData } = await pool.query(
+         `SELECT ir.cluster_id, ir.farmer_id, ir.is_cluster_request, ir.requester_type,
+          (SELECT SUM(fp.farm_size_hectares) FROM farmer_profiles fp 
+           JOIN cluster_members cm ON fp.id = cm.farmer_id 
+           WHERE cm.cluster_id = ir.cluster_id) as cluster_hectares,
+          (SELECT farm_size_hectares FROM farmer_profiles WHERE id = ir.farmer_id) as farmer_hectares
+          FROM input_requests ir WHERE ir.id = $1`,
+         [req.params.id]
+      );
+
+      if (!reqData[0]) {
+         return res.status(404).json({ success: false, error: "Request not found" });
+      }
+
+      const request = reqData[0];
+      const hectares = request.requester_type === 'farmer'
+         ? (parseFloat(request.farmer_hectares) || 1)
+         : (parseFloat(request.cluster_hectares) || 1);
+
+      // Calculate total cost of selected items
+      const INPUT_RATES = {
+         "Mechanical": 150000, "Seeds": 45000, "Fertilizer": 65000,
+         "Irrigations": 120000, "Pesticides": 35000, "Herbicides": 25000,
+      };
+      let totalCost = 0;
+      selectedItems.forEach(item => {
+         totalCost += (INPUT_RATES[item] || 0) * hectares;
+      });
+      totalCost = Math.min(totalCost, 1000000);
+
+      // Check locked funds for cluster requests
+      if (request.is_cluster_request && request.cluster_id) {
+         let wallet = await getWalletByOwner(request.cluster_id, "cluster");
+         if (request.requester_type === 'aggregator') {
+             wallet = await getWalletByOwner(request.requester_id, "aggregator");
+         }
+         
+         const lockedBalance = wallet ? parseFloat(wallet.locked_balance) : 0;
+         if (totalCost > lockedBalance) {
+            return res.status(400).json({
+               success: false,
+               error: `Total input cost (₦${totalCost.toLocaleString()}) exceeds locked funds (₦${lockedBalance.toLocaleString()}). Please select fewer inputs or request additional funding.`
+            });
+         }
+      } else if (request.farmer_id) {
+         // Check locked funds for individual farmer requests
+         const { rows: farmerData } = await pool.query("SELECT vendor_id FROM farmer_profiles WHERE id = $1", [request.farmer_id]);
+         if (farmerData.length > 0) {
+            const wallet = await getWalletByOwner(farmerData[0].vendor_id, "farmer");
+            const lockedBalance = wallet ? parseFloat(wallet.locked_balance) : 0;
+            if (totalCost > lockedBalance) {
+               return res.status(400).json({
+                  success: false,
+                  error: `Total input cost (₦${totalCost.toLocaleString()}) exceeds locked funds (₦${lockedBalance.toLocaleString()}). Please select fewer inputs or request additional funding.`
+               });
+            }
+         }
+      }
+
       const result = await updateInputRequestItems(req.params.id, selectedItems);
       return res.status(200).json({ success: true, data: result });
    } catch (error) {

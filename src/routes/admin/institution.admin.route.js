@@ -5,7 +5,10 @@ const institutionAdminRoute = express.Router();
 
 // Institution analytics
 institutionAdminRoute.get("/analytics", institutionAdminController.getAnalytics);
+institutionAdminRoute.get("/portfolio", institutionAdminController.getPortfolio);
+institutionAdminRoute.get("/impact", institutionAdminController.getImpact);
 institutionAdminRoute.get("/transactions", institutionAdminController.getTransactions);
+institutionAdminRoute.put("/profile", institutionAdminController.updateProfile);
 
 // Input Approvals & Assignments
 institutionAdminRoute.get("/pending-requests", institutionAdminController.getPendingRequests);

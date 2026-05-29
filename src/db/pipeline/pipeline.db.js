@@ -205,7 +205,9 @@ async function getAllClusters() {
        (SELECT status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_status,
        (SELECT id FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as pending_request_id,
        (SELECT w.balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_balance,
-       (SELECT w.locked_balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_locked_balance
+       (SELECT w.locked_balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_locked_balance,
+       (SELECT dv.fname || ' ' || dv.lname FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY ir.created_at DESC LIMIT 1) as distributor_name,
+       (SELECT dv.phone FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY ir.created_at DESC LIMIT 1) as distributor_phone
        FROM clusters c
        LEFT JOIN vendors v ON c.supervisor_id = v.id
        LEFT JOIN programs p ON c.program_id = p.id
@@ -215,25 +217,6 @@ async function getAllClusters() {
 }
 
 async function assignFarmerToCluster(clusterId, farmerId) {
-   // Check eligibility first
-   const { rows: eligibility } = await pool.query(
-      `SELECT fp.id, fp.onboarding_status,
-       (SELECT COUNT(*) FROM training_modules tm WHERE tm.program_id = fp.program_id) as total_modules,
-       (SELECT COUNT(*) FROM farmer_training_progress ftp WHERE ftp.farmer_id = fp.id AND ftp.status = 'completed') as completed_modules
-       FROM farmer_profiles fp
-       WHERE fp.id = $1`,
-      [farmerId]
-   );
-
-   const farmer = eligibility[0];
-   if (!farmer) throw new Error("Farmer not found");
-   if (farmer.onboarding_status !== 'completed' && farmer.onboarding_status !== 'verified') {
-      throw new Error("Farmer is not verified yet");
-   }
-   if (farmer.total_modules > 0 && farmer.completed_modules < farmer.total_modules) {
-      throw new Error("Farmer has not completed all training modules");
-   }
-
    const { rows } = await pool.query(
       `INSERT INTO cluster_members (cluster_id, farmer_id, role)
        VALUES ($1, $2, 'farmer')
@@ -260,7 +243,7 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
    let params = [];
 
    if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
-      query += `, (3959 * acos(cos(radians(c.gps_latitude)) * cos(radians(fp.gps_latitude)) * cos(radians(fp.gps_longitude) - radians(c.gps_longitude)) + sin(radians(c.gps_latitude)) * sin(radians(fp.gps_latitude)))) AS distance
+      query += `, (3959 * acos(GREATEST(-1.0, LEAST(1.0, cos(radians(c.gps_latitude)) * cos(radians(fp.gps_latitude)) * cos(radians(fp.gps_longitude) - radians(c.gps_longitude)) + sin(radians(c.gps_latitude)) * sin(radians(fp.gps_latitude)))))) AS distance
       FROM farmer_profiles fp
       JOIN vendors v ON fp.vendor_id = v.id
       CROSS JOIN (SELECT gps_latitude, gps_longitude FROM clusters WHERE id = $1) c`;
@@ -269,32 +252,16 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
       query += ` FROM farmer_profiles fp JOIN vendors v ON fp.vendor_id = v.id`;
    }
 
-   query += ` WHERE (fp.onboarding_status = 'completed' OR fp.onboarding_status = 'verified')`;
+   query += ` WHERE 1=1`;
 
-   if (programId && programId !== 'null' && programId !== 'undefined') {
-      params.push(programId);
-      const paramPlaceholder = `$${params.length}`;
-      query += ` AND fp.program_id = ${paramPlaceholder}
-        AND (
-           SELECT COUNT(*) FROM training_modules tm WHERE tm.program_id = fp.program_id
-        ) = (
-           SELECT COUNT(*) FROM farmer_training_progress ftp WHERE ftp.farmer_id = fp.id AND ftp.status = 'completed'
-        )
-        AND NOT EXISTS (
-           SELECT 1 FROM cluster_members cm JOIN clusters cl ON cm.cluster_id = cl.id
-           WHERE cm.farmer_id = fp.id AND cl.program_id = ${paramPlaceholder}
-        )`;
-   } else {
-      // If no program is specified, they just shouldn't be in this cluster yet
-      if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
-         query += ` AND NOT EXISTS (
-            SELECT 1 FROM cluster_members cm WHERE cm.farmer_id = fp.id AND cm.cluster_id = $1
-         )`;
-      }
+   if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
+      query += ` AND NOT EXISTS (
+         SELECT 1 FROM cluster_members cm WHERE cm.farmer_id = fp.id AND cm.cluster_id = $1
+      )`;
    }
 
    if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
-      query += ` ORDER BY distance ASC`;
+      query += ` ORDER BY distance ASC NULLS LAST`;
    }
 
    const { rows } = await pool.query(query, params);
