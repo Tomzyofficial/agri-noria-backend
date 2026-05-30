@@ -139,10 +139,11 @@ async function createFarmerProfile(data) {
 
 async function getFarmerProfileByVendor(vendorId) {
    const { rows } = await pool.query(
-      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date
+      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, cm.cluster_id
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN programs p ON fp.program_id = p.id
+       LEFT JOIN cluster_members cm ON cm.farmer_id = fp.id
        WHERE fp.vendor_id = $1`,
       [vendorId]
    );
@@ -313,7 +314,8 @@ async function removeFarmerFromCluster(clusterId, farmerId, supervisorId) {
 async function getFarmerCluster(clusterId) {
    const { rows } = await pool.query(
       `SELECT c.*, v.fname as supervisor_fname, v.lname as supervisor_lname, v.phone as supervisor_phone,
-       (SELECT COUNT(*) FROM cluster_members WHERE cluster_id = c.id) as farmer_count
+       (SELECT COUNT(*) FROM cluster_members WHERE cluster_id = c.id) as farmer_count,
+       (SELECT COALESCE(SUM(fp.farm_size_hectares), 0) FROM farmer_profiles fp JOIN cluster_members cm ON fp.id = cm.farmer_id WHERE cm.cluster_id = c.id) as total_hectares
        FROM clusters c
        JOIN vendors v ON c.supervisor_id = v.id
        WHERE c.id = $1`,
@@ -904,7 +906,12 @@ async function getIntelligenceStats() {
 
 async function getAllDistributors() {
    const { rows } = await pool.query(
-      "SELECT id, fname, lname, email, phone FROM vendors WHERE LOWER(account_type) = 'distributor'"
+      `SELECT v.id, v.fname, v.lname, CONCAT(v.fname, ' ', v.lname) AS name, 
+              v.email, v.phone, v.company_name,
+              vd.business_name, vd.address AS location, vd.business_desc, vd.hot_line_phone_number
+       FROM vendors v
+       LEFT JOIN vendor_documents vd ON v.id = vd.vendor_id
+       WHERE LOWER(v.account_type) = 'distributor'`
    );
    return rows;
 }

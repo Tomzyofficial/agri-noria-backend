@@ -9,6 +9,7 @@ import {
    createPlantingActivity, getPlantingByFarmer,
    getNearestClusters, getEligibleFarmersForCluster, getFarmerCluster,
    createFieldVerification, getVerificationsByCluster,
+   getFarmSupervisionByFarmer, upsertFarmSupervision,
    createHarvestApproval,
    createLogisticsEntry, getLogisticsByCluster,
    createBuyerMatch, getBuyerMatches,
@@ -66,7 +67,17 @@ pipelineController.getMyFarmerProfile = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const profile = await getFarmerProfileByVendor(payload.id);
+      let profile = await getFarmerProfileByVendor(payload.id);
+      
+      if (!profile) {
+         // Fetch basic vendor info if farmer profile doesn't exist yet
+         const { default: pool } = await import("../../lib/connect.js");
+         const { rows } = await pool.query("SELECT id, fname, lname, email, phone FROM vendors WHERE id = $1", [payload.id]);
+         if (rows.length > 0) {
+            profile = { ...rows[0], is_new: true };
+         }
+      }
+
       return res.status(200).json({ success: true, data: profile });
    } catch (error) {
       console.error("Error fetching farmer profile:", error);

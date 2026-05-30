@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS input_requests (
    funds_status VARCHAR(50) DEFAULT 'pending', -- pending, approved, rejected
    items_status VARCHAR(50) DEFAULT 'pending', -- pending, approved, rejected, assigned
    is_cluster_request BOOLEAN DEFAULT false,
+   requester_type VARCHAR(50) DEFAULT 'farmer',
+   requester_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+   total_amount DECIMAL(15,2) DEFAULT 0,
    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
