@@ -10,6 +10,7 @@ import {
    getNearestClusters, getEligibleFarmersForCluster, getFarmerCluster,
    createFieldVerification, getVerificationsByCluster,
    getFarmSupervisionByFarmer, upsertFarmSupervision,
+   getClusterSupervision, upsertClusterSupervision,
    createHarvestApproval,
    createLogisticsEntry, getLogisticsByCluster,
    createBuyerMatch, getBuyerMatches,
@@ -25,15 +26,25 @@ import {
    updateLogisticsStatusDb,
    getWarehouseInventoryStats,
    addWarehouseStock,
-   createEcosystemOrder, getEcosystemOrders, processEscrowPayment, assignOrderDistributor, getAllEcosystemOrders,
-   getEcosystemOrdersByDistributor, markOrderDelivered,
+   removeWarehouseStock,
+   createEcosystemOrder, getEcosystemOrders,
+   getEcosystemOrderForPayment, createEcosystemOrderPayment, markEcosystemOrderPaymentProcessing,
+   getEcosystemOrderPaymentByReference, recordEcosystemPaystackVerification, confirmEcosystemOrderPayment,
+   processEscrowPayment, assignOrderDistributor, getAllEcosystemOrders,
+   getEcosystemOrdersByDistributor, markOrderDelivered, updateEcosystemOrderStatus,
    getDistributorStats
 } from "../../db/pipeline/pipeline.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
+import { initializePaystack, verifyPaystackTransaction } from "../../lib/services/paystack.service.js";
 
 const INPUT_RATE_PER_HECTARE = 28000; // ₦28,000 per hectare for input financing
 
 const pipelineController = {};
+
+const ecosystemPaymentCallbackUrl = (orderId) => {
+   const base = process.env.FRONTEND_APP_URL || process.env.APP_BASEURL || "http://localhost:3000";
+   return `${base.replace(/\/$/, "")}/ecosystem/buyer-partner/orders?order_id=${orderId}`;
+};
 
 // ============ FARMER PROFILES ============
 
@@ -709,6 +720,32 @@ pipelineController.updateSupervision = async (req, res) => {
    }
 };
 
+pipelineController.getClusterSupervision = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const supervision = await getClusterSupervision(req.params.clusterId);
+      return res.status(200).json({ success: true, data: supervision });
+   } catch (error) {
+      console.error("Error fetching cluster supervision:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch cluster supervision" });
+   }
+};
+
+pipelineController.updateClusterSupervision = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const supervision = await upsertClusterSupervision({ ...req.body, officer_id: payload.id });
+      return res.status(200).json({ success: true, data: supervision });
+   } catch (error) {
+      console.error("Error updating cluster supervision:", error);
+      return res.status(500).json({ success: false, error: "Failed to update cluster supervision" });
+   }
+};
+
 // ============ HARVEST ============
 
 pipelineController.createHarvest = async (req, res) => {
@@ -937,15 +974,28 @@ pipelineController.addWarehouseStock = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
-      const { commodity, quantity_tons, warehouse_name } = req.body;
-      if (!commodity || !quantity_tons || !warehouse_name) {
+      const { commodity, quantity, measuring_scale, price_per_unit, warehouse_name } = req.body;
+      if (!commodity || !quantity || !warehouse_name || !price_per_unit) {
          return res.status(400).json({ success: false, error: "Missing required fields" });
       }
-      const record = await addWarehouseStock(commodity, parseFloat(quantity_tons), warehouse_name);
+      const record = await addWarehouseStock(commodity, parseFloat(quantity), measuring_scale || 'Tons', parseFloat(price_per_unit), warehouse_name);
       return res.status(201).json({ success: true, data: record });
    } catch (error) {
       console.error("Error adding warehouse stock:", error);
       return res.status(500).json({ success: false, error: "Failed to add warehouse stock" });
+   }
+};
+
+pipelineController.removeWarehouseStock = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+      const { id } = req.params;
+      const record = await removeWarehouseStock(id);
+      return res.status(200).json({ success: true, data: record });
+   } catch (error) {
+      console.error("Error removing warehouse stock:", error);
+      return res.status(500).json({ success: false, error: "Failed to remove warehouse stock" });
    }
 };
 
@@ -982,7 +1032,146 @@ pipelineController.createEcosystemOrder = async (req, res) => {
       return res.status(201).json({ success: true, data: order });
    } catch (error) {
       console.error("Error creating ecosystem order:", error);
+      if (error.message?.includes("price_per_unit") || error.message?.includes("Invalid quantity")) {
+         return res.status(400).json({ success: false, error: error.message });
+      }
       return res.status(500).json({ success: false, error: "Failed to create order" });
+   }
+};
+
+pipelineController.initializeEcosystemOrderPayment = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { id } = req.params;
+      const { email } = req.body;
+      const order = await getEcosystemOrderForPayment(id, payload.id);
+      if (!order) return res.status(404).json({ success: false, error: "Order not found" });
+      if (order.payment_status === "finance_confirmed") {
+         return res.status(400).json({ success: false, error: "Payment already confirmed by finance" });
+      }
+
+      const buyerEmail = email || order.email || payload.email;
+      if (!buyerEmail) {
+         return res.status(400).json({ success: false, error: "Buyer email is required for Paystack payment" });
+      }
+
+      const payment = await createEcosystemOrderPayment(order.id, payload.id, order.total_amount, {
+         order_id: order.id,
+         buyer_id: payload.id,
+      });
+
+      const initResponse = await initializePaystack("/transaction/initialize", {
+         body: {
+            email: buyerEmail,
+            amount: Math.round(Number(order.total_amount) * 100),
+            metadata: {
+               order_id: order.id,
+               payment_id: payment.id,
+               buyer_id: payload.id,
+               category: "buyer_ecosystem_order",
+            },
+            callback_url: ecosystemPaymentCallbackUrl(order.id),
+         },
+      });
+
+      const updatedPayment = await markEcosystemOrderPaymentProcessing(
+         payment.id,
+         initResponse.data.reference,
+         {
+            ...(payment.metadata || {}),
+            paystack_access_code: initResponse.data.access_code,
+         }
+      );
+
+      return res.status(200).json({
+         success: true,
+         data: {
+            authorization_url: initResponse.data.authorization_url,
+            access_code: initResponse.data.access_code,
+            reference: initResponse.data.reference,
+            payment_id: updatedPayment.id,
+         },
+      });
+   } catch (error) {
+      console.error("Error initializing ecosystem order payment:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to initialize payment" });
+   }
+};
+
+pipelineController.verifyEcosystemOrderPayment = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const reference = req.query.reference || req.query.ref || req.body?.reference;
+      if (!reference) return res.status(400).json({ success: false, error: "Payment reference is required" });
+
+      const payment = await getEcosystemOrderPaymentByReference(reference);
+      if (!payment) return res.status(404).json({ success: false, error: "Payment record not found" });
+      if (payment.buyer_id !== payload.id) {
+         return res.status(403).json({ success: false, error: "Payment does not belong to this buyer" });
+      }
+      if (payment.status === "finance_confirmed") {
+         return res.status(200).json({ success: true, message: "Payment already confirmed by finance", data: payment });
+      }
+      if (payment.status === "paystack_verified") {
+         return res.status(200).json({ success: true, message: "Payment already verified. Waiting for finance confirmation.", data: payment });
+      }
+
+      const verifyRes = await verifyPaystackTransaction(reference);
+      if (verifyRes.data?.status !== "success") {
+         return res.status(400).json({ success: false, error: "Payment verification not successful" });
+      }
+
+      const expectedAmountKobo = Math.round(Number(payment.amount) * 100);
+      if (verifyRes.data.amount !== expectedAmountKobo) {
+         return res.status(400).json({ success: false, error: "Payment amount mismatch" });
+      }
+
+      const updatedPayment = await recordEcosystemPaystackVerification(
+         payment.id,
+         String(verifyRes.data.id),
+         {
+            ...(payment.metadata || {}),
+            paystack: {
+               status: verifyRes.data.status,
+               paid_at: verifyRes.data.paid_at,
+               channel: verifyRes.data.channel,
+               currency: verifyRes.data.currency,
+            },
+         }
+      );
+
+      return res.status(200).json({
+         success: true,
+         message: "Payment verified with Paystack. Waiting for finance confirmation.",
+         data: updatedPayment,
+      });
+   } catch (error) {
+      console.error("Error verifying ecosystem order payment:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to verify payment" });
+   }
+};
+
+pipelineController.confirmEcosystemOrderPayment = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+      if (payload.account_type?.toLowerCase() !== "finance" && payload.account_type?.toLowerCase() !== "super admin") {
+         return res.status(403).json({ success: false, error: "Only finance can confirm ecosystem order payments" });
+      }
+
+      const result = await confirmEcosystemOrderPayment(req.params.id, payload.id, req.body.finance_note || null);
+      return res.status(200).json({
+         success: true,
+         message: "Payment confirmed by finance. Sales can now process the order.",
+         data: result,
+      });
+   } catch (error) {
+      console.error("Error confirming ecosystem order payment:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to confirm payment" });
    }
 };
 
@@ -1024,7 +1213,25 @@ pipelineController.assignOrderDistributor = async (req, res) => {
       return res.status(200).json({ success: true, message: "Order assigned to distributor" });
    } catch (error) {
       console.error("Error assigning order distributor:", error);
-      return res.status(500).json({ success: false, error: "Failed to assign distributor" });
+      return res.status(500).json({ success: false, error: error.message || "Failed to assign distributor" });
+   }
+};
+
+pipelineController.updateOrderStatus = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { status } = req.body;
+      if (!['pending', 'payment_processing', 'payment_pending_finance', 'ready_for_sales', 'paid', 'assigned', 'processing', 'processed', 'in_progress', 'delivered', 'cancelled'].includes(status)) {
+         return res.status(400).json({ success: false, error: "Invalid status" });
+      }
+
+      const order = await updateEcosystemOrderStatus(req.params.id, status);
+      return res.status(200).json({ success: true, data: order });
+   } catch (error) {
+      console.error("Error updating ecosystem order status:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update order status" });
    }
 };
 

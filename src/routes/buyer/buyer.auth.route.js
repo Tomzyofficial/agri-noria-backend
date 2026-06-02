@@ -11,4 +11,6 @@ buyerAuthRoute.post("/auth/buyer/signin", buyerAuthController.signin);
 
 buyerAuthRoute.post("/auth/buyer/signout", buyerAuthController.signout);
 
+buyerAuthRoute.patch("/auth/buyer/update-profile", buyerAuthController.updateProfile);
+
 export default buyerAuthRoute;
