@@ -8,6 +8,7 @@ import {
    handleInvoiceUpdate,
    handleLoanRepayment,
    handleAggregatorEscrow,
+   handleEcosystemOrderPayment,
 } from "./paystack.webhook.helpers.js";
 import crypto from "crypto";
 
@@ -69,6 +70,8 @@ export const webhook = async (req, res) => {
                   await handleLoanRepayment(event.data);
                } else if (category === "aggregator_escrow") {
                   await handleAggregatorEscrow(event.data);
+               } else if (category === "buyer_ecosystem_order") {
+                  await handleEcosystemOrderPayment(event.data);
                } else {
                   await handleChargeSuccess(event.data);
                }

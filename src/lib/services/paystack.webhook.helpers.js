@@ -1,5 +1,6 @@
 import { loanRepaymentService } from "../../db/vendor/loanRepayment.db.js";
 import { upsertSubscriptionInvoice } from "../../db/vendor/sub.plans.db.js";
+import { getEcosystemOrderPaymentByReference, recordEcosystemPaystackVerification } from "../../db/pipeline/pipeline.db.js";
 import pool from "../connect.js";
 const LOG = (label, data) => {
    const timestamp = new Date().toISOString();
@@ -440,6 +441,51 @@ async function handleAggregatorEscrow(data) {
    }
 }
 
+async function handleEcosystemOrderPayment(data) {
+   const { reference, status, id, paid_at, channel, currency } = data;
+   try {
+      LOG("WEBHOOK_ECOSYSTEM_ORDER_PAYMENT", { reference, status });
+      if (status !== "success") return;
+
+      const payment = await getEcosystemOrderPaymentByReference(reference);
+      if (!payment) {
+         LOG("WEBHOOK_ECOSYSTEM_ORDER_PAYMENT_NOT_FOUND", { reference });
+         return;
+      }
+
+      if (payment.status === "paystack_verified" || payment.status === "finance_confirmed") {
+         LOG("WEBHOOK_ECOSYSTEM_ORDER_PAYMENT_ALREADY_PROCESSED", { reference });
+         return;
+      }
+
+      const expectedAmountKobo = Math.round(Number(payment.amount) * 100);
+      if (data.amount !== expectedAmountKobo) {
+         LOG("WEBHOOK_ECOSYSTEM_ORDER_PAYMENT_AMOUNT_MISMATCH", { expectedAmountKobo, amount: data.amount });
+         return;
+      }
+
+      await recordEcosystemPaystackVerification(
+         payment.id,
+         String(id),
+         {
+            ...(payment.metadata || {}),
+            paystack: {
+               status,
+               paid_at,
+               channel,
+               currency,
+            },
+         }
+      );
+      LOG("WEBHOOK_ECOSYSTEM_ORDER_PAYMENT_PROCESSED", { paymentId: payment.id, reference });
+   } catch (error) {
+      LOG("WEBHOOK_ECOSYSTEM_ORDER_PAYMENT_ERROR", {
+         message: error.message,
+         stack: error.stack,
+      });
+   }
+}
+
 export {
    handleSubscriptionCreated,
    handleChargeSuccess,
@@ -450,4 +496,5 @@ export {
    handleInvoicePaymentFailed,
    handleInvoiceUpdate,
    handleAggregatorEscrow,
+   handleEcosystemOrderPayment,
 };

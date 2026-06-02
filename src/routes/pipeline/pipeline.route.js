@@ -9,6 +9,7 @@ pipelineRoute.get("/pipeline/logistics/all", pipelineController.getAllLogistics)
 pipelineRoute.post("/pipeline/logistics/update-status", pipelineController.updateLogisticsStatus);
 pipelineRoute.get("/pipeline/warehouse/inventory", pipelineController.getWarehouseInventory);
 pipelineRoute.post("/pipeline/warehouse/inventory", pipelineController.addWarehouseStock);
+pipelineRoute.delete("/pipeline/warehouse/inventory/:id", pipelineController.removeWarehouseStock);
 pipelineRoute.get("/pipeline/distributors", pipelineController.getDistributors);
 
 // Farmer Profiles
@@ -43,7 +44,6 @@ pipelineRoute.get("/pipeline/inputs/all", pipelineController.getAllInputs);
 pipelineRoute.patch("/pipeline/inputs/:id/approve-funds", pipelineController.approveFunds);
 pipelineRoute.patch("/pipeline/inputs/:id/submit-items", pipelineController.submitInputItems);
 pipelineRoute.patch("/pipeline/inputs/:id/approve-items", pipelineController.approveItems);
-
 pipelineRoute.get("/pipeline/inputs/distributor", pipelineController.getDistributorInputs);
 pipelineRoute.patch("/pipeline/inputs/:id/status", pipelineController.updateInputStatus);
 
@@ -55,12 +55,14 @@ pipelineRoute.get("/pipeline/planting/mine", pipelineController.getMyPlanting);
 pipelineRoute.post("/pipeline/verifications", pipelineController.createVerification);
 pipelineRoute.get("/pipeline/verifications/cluster/:id", pipelineController.getClusterVerifications);
 
-// Harvest
-pipelineRoute.post("/pipeline/harvest", pipelineController.createHarvest);
-
-// Supervision
+// Supervision (cluster routes first to avoid :farmerId matching "cluster")
+pipelineRoute.get("/pipeline/supervision/cluster/:clusterId", pipelineController.getClusterSupervision);
+pipelineRoute.post("/pipeline/supervision/cluster/update", pipelineController.updateClusterSupervision);
 pipelineRoute.get("/pipeline/supervision/:farmerId", pipelineController.getSupervision);
 pipelineRoute.post("/pipeline/supervision/update", pipelineController.updateSupervision);
+
+// Harvest
+pipelineRoute.post("/pipeline/harvest", pipelineController.createHarvest);
 
 // Logistics
 pipelineRoute.post("/pipeline/logistics", pipelineController.createLogistics);
@@ -88,6 +90,11 @@ pipelineRoute.get("/pipeline/distributor/stats", pipelineController.getDistribut
 pipelineRoute.post("/pipeline/buyer-orders", pipelineController.createEcosystemOrder);
 pipelineRoute.get("/pipeline/buyer-orders/mine", pipelineController.getEcosystemOrders);
 pipelineRoute.get("/pipeline/buyer-orders/all", pipelineController.getAllEcosystemOrders);
+pipelineRoute.post("/pipeline/buyer-orders/:id/payment/initialize", pipelineController.initializeEcosystemOrderPayment);
+pipelineRoute.post("/pipeline/buyer-orders/payment/verify", pipelineController.verifyEcosystemOrderPayment);
+pipelineRoute.get("/pipeline/buyer-orders/payment/verify", pipelineController.verifyEcosystemOrderPayment);
+pipelineRoute.patch("/pipeline/buyer-orders/:id/payment/finance-confirm", pipelineController.confirmEcosystemOrderPayment);
+pipelineRoute.patch("/pipeline/buyer-orders/:id/status", pipelineController.updateOrderStatus);
 pipelineRoute.post("/pipeline/buyer-orders/escrow-pay", pipelineController.processEscrowPayment);
 pipelineRoute.post("/pipeline/buyer-orders/assign-distributor", pipelineController.assignOrderDistributor);
 pipelineRoute.get("/pipeline/distributor/orders", pipelineController.getDistributorOrders);

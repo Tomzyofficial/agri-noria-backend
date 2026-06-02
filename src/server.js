@@ -29,6 +29,7 @@ import trainingMaterialRoutes from "./routes/trainingMaterial.routes.js";
 import logisticsOperationRoute from "./routes/logisitics/logisticsOperation.route.js";
 import paymentsRoute from "./routes/payments.route.js";
 import ordersRoute from "./routes/buyer/orders.route.js";
+import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
 
 const port = process.env.PORT || 8080;
 
@@ -71,7 +72,8 @@ const app = express()
   .use("/api/inputs", inputRequestRoute)
   .use("/api/vendor/logistics", logisticsOperationRoute)
   .use("/api/buyer", paymentsRoute)
-  .use("/api/buyer", ordersRoute);
+  .use("/api/buyer", ordersRoute)
+  .use("/api/field-operations", fieldOperationsRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on ${port}`);
