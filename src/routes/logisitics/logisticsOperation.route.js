@@ -1,6 +1,6 @@
 import express from "express";
 import { upload } from "../../middlewares/upload.js";
-import logisiticsOperationController from "../../controllers/vendor/logistics/logisiticsOperation.controller.js";
+import logisiticsOperationController from "../../controllers/logistics/logisiticsOperation.controller.js";
 
 const logisticsOperationRoute = express.Router();
 
@@ -69,6 +69,16 @@ logisticsOperationRoute.post(
 logisticsOperationRoute.post(
   "/orders/:orderId/complete-delivery",
   logisiticsOperationController.completeDelivery,
+);
+
+logisticsOperationRoute.get(
+  "/quote-requests",
+  logisiticsOperationController.getQuoteRequests,
+);
+
+logisticsOperationRoute.post(
+  "/quote-requests/:id/update-status",
+  logisiticsOperationController.updateQuoteRequestStatus,
 );
 
 export default logisticsOperationRoute;

@@ -11,18 +11,20 @@ import {
   getShipmentOrdersByLogisticsVendorId,
   //   startLogisticsShipment,
   getLogisticsOrderForVendor,
-} from "../../../db/logistics/logisiticsOperation.db.js";
+  getQuoteRequests,
+  updateQuoteRequestStatus,
+} from "../../db/logistics/logisiticsOperation.db.js";
 import {
   startShipmentTransaction,
   getShipmentByOrderId,
   completeDeliveryWithOTP,
-} from "../../../db/logistics/shipment.db.js";
+} from "../../db/logistics/shipment.db.js";
 
-import { saveFileToCloudinary } from "../../../lib/cloudinary.img.js";
-import { verifyVendorToken } from "../../../sessions/vendor.auth.session.js";
-import { verifyBuyerToken } from "../../../sessions/buyer.auth.session.js";
-import vehicleUploadSchema from "../../../lib/validations/validateLogisticsOperation.js";
-import emailService from "../../../services/email/email.service.js";
+import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
+import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
+import { verifyBuyerToken } from "../../sessions/buyer.auth.session.js";
+import vehicleUploadSchema from "../../lib/validations/validateLogisticsOperation.js";
+import emailService from "../../services/email/email.service.js";
 
 const logisiticsOperation = {};
 
@@ -108,7 +110,7 @@ logisiticsOperation.addVehicle = async (req, res) => {
         .json({ success: false, error: "Image upload failed." });
     }
     const result = await addVehicle({
-      logistics_company_id: payload.id,
+      vendor_id: payload.id,
       title,
       vehicle_type,
       license_plate,
@@ -140,7 +142,6 @@ logisiticsOperation.getVehicles = async (req, res) => {
   try {
     const result = await getVehicles(payload.id);
     if (result.success) {
-      console.log("data", result.vehicles);
       return res.status(200).json({ success: true, data: result.vehicles });
     }
     return res.status(400).json({ success: false, error: result.error });
@@ -152,6 +153,11 @@ logisiticsOperation.getVehicles = async (req, res) => {
 
 logisiticsOperation.getListedVehicles = async (req, res) => {
   let country_code;
+  let vehicleId = null;
+  const vehicleIdFromQuery = req.query.vehicleId;
+  if (vehicleIdFromQuery) {
+    vehicleId = vehicleIdFromQuery;
+  }
   const userLocationCookie = req.cookies?.user_location;
   if (userLocationCookie) {
     const locationData = JSON.parse(userLocationCookie);
@@ -161,7 +167,12 @@ logisiticsOperation.getListedVehicles = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 100, 100);
     const offset = parseInt(req.query.offset, 10) || 0;
 
-    const result = await getListedVehicles({ country_code, limit, offset });
+    const result = await getListedVehicles({
+      country_code,
+      limit,
+      offset,
+      vehicleId,
+    });
     if (!result.success) {
       return res.status(500).json({ success: false, error: result.error });
     }
@@ -170,6 +181,7 @@ logisiticsOperation.getListedVehicles = async (req, res) => {
       success: true,
       data: result.vehicles,
       pagination: result.pagination,
+      vehicleDetails: result.vehicleDetails,
     });
   } catch (error) {
     console.error("Error fetching listed vehicles:", error);
@@ -599,157 +611,6 @@ logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
   }
 };
 
-/* logisiticsOperation.createOrderController = async (req, res) => {
-  const payload = await verifyBuyerToken(req);
-
-  if (!payload) {
-    return res.status(401).json({ success: false, error: "Unauthorized" });
-  }
-
-  try {
-    const {
-      buyerId,
-      vendor,
-      address,
-      cart,
-      fname,
-      lname,
-      phone,
-      country_code,
-      state_code,
-      // Logistics provider fields from selectedLogistics
-      id: vehicle_id,
-      title: vehicle_title,
-      vehicle_type,
-      rate_amount,
-      base_location,
-      operating_regions,
-      pricing_model,
-      // Other logistics fields
-      ...rest
-    } = req.body;
-
-    // Validate required fields
-    if (!buyerId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Buyer ID is required" });
-    }
-
-    if (!vendor?.seller_id) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Seller ID is required" });
-    }
-
-    if (!address) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Delivery address is required" });
-    }
-
-    if (!cart || !Array.isArray(cart) || cart.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Cart items are required" });
-    }
-
-    if (!vehicle_id) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Logistics provider is required" });
-    }
-
-    if (!rate_amount || Number(rate_amount) <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Valid logistics rate_amount is required for delivery fee",
-      });
-    }
-
-    const { subtotal, discount, delivery_fee, total_amount } =
-      calculateCheckoutAmounts(cart, rate_amount);
-
-    // Prepare order items
-    const items = cart.map((item) => ({
-      product_id: item.product_id,
-      // product_type: "produce", // Default to produce, can be determined from product
-      quantity: item.quantity,
-      unit_price: item.price,
-      packaging_type: item.unit_measure || "piece",
-      unit_measure: item.unit_measure || "piece",
-      product_name: item.listing_name,
-      product_image: item.product_image,
-    }));
-
-    // Prepare metadata with buyer info and logistics details
-    const metadata = {
-      buyer_info: {
-        fname,
-        lname,
-        phone,
-        country_code,
-        state_code,
-      },
-      logistics_provider: {
-        vehicle_id,
-        vehicle_title,
-        vehicle_type,
-        rate_amount,
-        base_location,
-        operating_regions,
-        pricing_model,
-      },
-      amount_breakdown: {
-        subtotal,
-        discount,
-        delivery_fee,
-        total_amount,
-      },
-      ...rest,
-    };
-
-    // Create order — total_amount is the exact Paystack charge (NGN, major units)
-    const order = await createOrder({
-      buyer_id: buyerId,
-      seller_id: vendor.seller_id,
-      total_amount,
-      currency: cart[0]?.currency || "NGN",
-      fulfillment_type: "delivery",
-      delivery_address: address,
-      delivery_fee,
-      notes: `Order from ${fname} ${lname}. Phone: ${phone}`,
-      metadata,
-    });
-
-    // Create order items
-    if (items && items.length > 0) {
-      await createOrderItems(order.id, items);
-    }
-
-    res.status(201).json({
-      success: true,
-      message: "Order created successfully",
-      data: {
-        ...order,
-        amount_breakdown: {
-          subtotal,
-          discount,
-          delivery_fee,
-          total_amount,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Error creating order:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to create order",
-      error: error.message,
-    });
-  }
-};  */
-
 // Complete delivery with OTP verification (logistics partner action)
 logisiticsOperation.completeDelivery = async (req, res) => {
   const payload = await verifyVendorToken(req);
@@ -799,6 +660,58 @@ logisiticsOperation.completeDelivery = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message || "Failed to complete delivery",
+    });
+  }
+};
+
+logisiticsOperation.getQuoteRequests = async (req, res) => {
+  const payload = await verifyVendorToken(req);
+  if (!payload) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  const getQuote = await getQuoteRequests(payload.id);
+  if (!getQuote) {
+    return res
+      .status(404)
+      .json({ success: false, error: "No quote requests found" });
+  }
+
+  return res.status(200).json({
+    success: true,
+    quoteRequests: getQuote.quoteRequests,
+    allQuoteRequests: getQuote.allQuoteRequests,
+  });
+};
+
+logisiticsOperation.updateQuoteRequestStatus = async (req, res) => {
+  try {
+    const payload = await verifyVendorToken(req);
+    if (!payload) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const { id: requestId } = req.params;
+    const status = "contacted";
+
+    const updatedQuoteRequest = await updateQuoteRequestStatus(
+      requestId,
+      status,
+      payload.id,
+    );
+    if (!updatedQuoteRequest.success) {
+      return res.status(404).json({
+        success: false,
+        error: updatedQuoteRequest.error || "Quote request not found",
+      });
+    }
+
+    return res
+      .status(200)
+      .json({ success: true, data: updatedQuoteRequest.data });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error. Try again.",
     });
   }
 };

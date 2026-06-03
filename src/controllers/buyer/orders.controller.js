@@ -6,8 +6,6 @@ import {
   getOrdersBySellerId,
   updateOrderStatus,
   updateOrderDelivery,
-  //   getOrderWithItems,
-  //   createOrderItems,
   cancelOrder,
   getSellerOrderStats,
   getBuyerOrderStats,
