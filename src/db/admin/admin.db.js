@@ -401,6 +401,95 @@ async function getInstitutionAnalytics() {
    };
 }
 
+// Get institution portfolio metrics — purely from DB, 0 if no data
+async function getInstitutionPortfolio() {
+   const [loansData, repaymentData, enrolledFarmers] = await Promise.all([
+      pool.query(`
+         SELECT COALESCE(SUM(total_value), 0) as active_loans
+         FROM input_requests
+         WHERE status IN ('approved', 'distributed')
+      `),
+      pool.query(`
+         SELECT 
+            COALESCE(SUM(financing_amount), 0) as total_financing,
+            COALESCE(SUM(recovered_amount), 0) as total_recovered
+         FROM repayments
+      `),
+      pool.query(`
+         SELECT COUNT(id) as total_farmers FROM farmer_profiles
+      `)
+   ]);
+
+   const activeLoans = parseFloat(loansData.rows[0].active_loans) || 0;
+   const totalFinancing = parseFloat(repaymentData.rows[0].total_financing) || 0;
+   const totalRecovered = parseFloat(repaymentData.rows[0].total_recovered) || 0;
+
+   // Pure calculation: if no financing records exist, rate is 0, not 100
+   const repaymentRate = totalFinancing > 0 
+      ? ((totalRecovered / totalFinancing) * 100).toFixed(1) 
+      : 0;
+
+   // At risk = outstanding balance only, no estimates
+   const atRisk = totalFinancing > 0 
+      ? Math.max(0, totalFinancing - totalRecovered) 
+      : 0;
+
+   return {
+      activeLoans,
+      repaymentRate,
+      atRisk,
+      enrolledFarmers: parseInt(enrolledFarmers.rows[0].total_farmers) || 0
+   };
+}
+
+// Get institution impact metrics — purely from DB, 0 if no data
+async function getInstitutionImpact() {
+   // Count completed harvest approvals for yield data
+   const harvestData = await pool.query(`
+      SELECT 
+         COUNT(id) as total_harvests,
+         COALESCE(SUM(expected_yield_tons), 0) as total_yield
+      FROM harvest_approvals
+      WHERE status = 'approved'
+   `);
+
+   // Count completed field verifications
+   const verificationData = await pool.query(`
+      SELECT COUNT(id) as total_verifications
+      FROM field_verifications
+      WHERE status = 'verified'
+   `);
+
+   // Count farmers with completed training
+   const trainingData = await pool.query(`
+      SELECT COUNT(DISTINCT farmer_id) as trained_farmers
+      FROM farmer_training_progress
+      WHERE status = 'completed'
+   `);
+
+   // Actual wallet credits to farmers (income)
+   const incomeData = await pool.query(`
+      SELECT COALESCE(SUM(wt.amount), 0) as total_farmer_income
+      FROM wallet_transactions wt
+      JOIN wallets w ON wt.wallet_id = w.id
+      WHERE w.owner_type = 'farmer' AND wt.type = 'credit'
+   `);
+
+   const totalHarvests = parseInt(harvestData.rows[0].total_harvests) || 0;
+   const totalYield = parseFloat(harvestData.rows[0].total_yield) || 0;
+   const totalVerifications = parseInt(verificationData.rows[0].total_verifications) || 0;
+   const trainedFarmers = parseInt(trainingData.rows[0].trained_farmers) || 0;
+   const totalFarmerIncome = parseFloat(incomeData.rows[0].total_farmer_income) || 0;
+
+   return {
+      totalHarvests,
+      totalYield,
+      totalVerifications,
+      trainedFarmers,
+      totalFarmerIncome
+   };
+}
+
 // Get recent transactions across the ecosystem for institutions
 async function getInstitutionTransactions(limit = 10) {
    const { rows } = await pool.query(
@@ -442,6 +531,8 @@ export {
    getSystemSettings,
    updateSystemSettings,
    getInstitutionAnalytics,
+   getInstitutionPortfolio,
+   getInstitutionImpact,
    getInstitutionTransactions,
 };
 

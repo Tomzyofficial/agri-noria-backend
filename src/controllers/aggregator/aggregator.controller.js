@@ -4,7 +4,7 @@ import PDFDocument from "pdfkit";
 import { cloudinary } from "../../lib/cloudinary.img.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 import axios from "axios";
-import { getWalletByOwner } from "../../db/pipeline/pipeline.db.js";
+import { getWalletByOwner, createWallet, depositLockedFunds } from "../../db/pipeline/pipeline.db.js";
 import pool from "../../lib/connect.js";
 import { createAuditLog } from "../../utils/auditLogger.js";
 
@@ -332,90 +332,200 @@ export const aggregatorController = {
          return res.status(500).json({ success: false, error: error.message });
       }
    },
+
+   // Verify & Stamp Agreement (Public - buyer facing)
+   verifyAndStampAgreement: async (req, res) => {
+      try {
+         const { token } = req.params;
+         const agreement = await aggregatorDb.getAgreementByToken(token);
+         if (!agreement) return res.status(404).json({ success: false, error: "Agreement not found" });
+
+         if (agreement.status === "accepted" || agreement.status === "stamped") {
+            return res.status(400).json({ success: false, error: "Agreement has already been accepted" });
+         }
+
+         const { buyer_signature } = req.body || {};
+
+         const updated = await aggregatorDb.updateAgreementStatus(agreement.id, "accepted", {
+            ...(buyer_signature ? { buyer_signature } : {}),
+         });
+
+         return res.status(200).json({ success: true, data: updated });
+      } catch (error) {
+         console.error("Error verifying/stamping agreement:", error);
+         return res.status(500).json({ success: false, error: error.message });
+      }
+   },
+
+   // Download Agreement PDF (Public) - generates on-the-fly and streams to browser
+   downloadAgreementPDF: async (req, res) => {
+      try {
+         const { token } = req.params;
+         const agreement = await aggregatorDb.getAgreementByToken(token);
+         if (!agreement) return res.status(404).json({ success: false, error: "Agreement not found" });
+
+         // Generate PDF on the fly and stream it
+         const doc = new PDFDocument({ margin: 50 });
+
+         res.setHeader("Content-Type", "application/pdf");
+         res.setHeader(
+            "Content-Disposition",
+            `inline; filename="agreement-${agreement.id.substring(0, 8)}.pdf"`
+         );
+
+         doc.pipe(res);
+         drawPDFDocument(doc, agreement);
+         doc.end();
+      } catch (error) {
+         console.error("Error generating PDF:", error);
+         return res.status(500).json({ success: false, error: error.message });
+      }
+   },
 };
 
-// Helper: Generate PDF
+// Helper: Generate PDF URL (returns a self-hosted URL instead of uploading to Cloudinary)
 async function generateAgreementPDF(agreement, buyer, aggregator) {
-   return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50 });
-      let buffers = [];
-      doc.on("data", buffers.push.bind(buffers));
-      doc.on("end", () => {
-         let pdfData = Buffer.concat(buffers);
-         const base64 = pdfData.toString("base64");
-         const dataURI = `data:application/pdf;base64,${base64}`;
-         cloudinary.uploader
-            .upload(dataURI, { resource_type: "auto", folder: "agreements" })
-            .then((result) => resolve(result.secure_url))
-            .catch((err) => {
-               console.warn("Cloudinary upload failed, using fallback URL.", err.message);
-               resolve("https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf");
-            });
+   // Instead of uploading to a third-party service, we point to our own endpoint
+   // that generates the PDF on-the-fly when accessed.
+   const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
+   return `${backendUrl}/api/aggregator/agreement-pdf/${agreement.secure_token}`;
+}
+
+// Helper: Draw the PDF document content
+function drawPDFDocument(doc, agreement) {
+   const product = typeof agreement.product_details === "string"
+      ? JSON.parse(agreement.product_details)
+      : agreement.product_details || {};
+
+   const formatCurrency = (amount) => {
+      const num = parseFloat(amount) || 0;
+      return "₦" + num.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+   };
+
+   const formatDate = (date) => {
+      if (!date) return "N/A";
+      return new Date(date).toLocaleDateString("en-NG", {
+         year: "numeric", month: "long", day: "numeric"
       });
+   };
 
-      // --- PDF THEME ---
-      const greenTheme = "#10B981";
-      const darkTheme = "#1F2937";
+   // === HEADER ===
+   doc.fontSize(22).font("Helvetica-Bold").fillColor("#1a5c2e")
+      .text("AGRI-NORIA", { align: "center" });
+   doc.fontSize(10).font("Helvetica").fillColor("#666666")
+      .text("Agricultural Procurement Platform", { align: "center" });
+   doc.moveDown(0.5);
 
-      // Header
-      doc.fillColor(greenTheme).fontSize(28).text("AGRONORIA", { align: "center", characterSpacing: 2 });
-      doc.fillColor(darkTheme).fontSize(14).text("Procurement & Purchase Agreement", { align: "center" });
-      doc.moveDown(2);
+   // Divider
+   doc.strokeColor("#1a5c2e").lineWidth(2)
+      .moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+   doc.moveDown(1);
 
-      // Section: Parties
-      doc.rect(50, doc.y, 500, 25).fill(greenTheme);
-      doc.fillColor("#FFFFFF").fontSize(10).text("CONTRACTING PARTIES", 60, doc.y + 7);
-      doc.moveDown(2);
+   // === TITLE ===
+   doc.fontSize(16).font("Helvetica-Bold").fillColor("#333333")
+      .text("PROCUREMENT AGREEMENT", { align: "center" });
+   doc.moveDown(0.3);
+   doc.fontSize(9).font("Helvetica").fillColor("#888888")
+      .text(`Agreement ID: ${agreement.id}`, { align: "center" });
+   doc.fontSize(9)
+      .text(`Date: ${formatDate(agreement.created_at)}`, { align: "center" });
+   doc.moveDown(1);
 
-      doc.fillColor(darkTheme).fontSize(10);
-      doc.text("AGGREGATOR (Seller Side):", 50, doc.y, { bold: true });
-      doc.text(`${aggregator.fname} ${aggregator.lname}`, 200, doc.y - 10);
+   // === PARTIES SECTION ===
+   doc.fontSize(12).font("Helvetica-Bold").fillColor("#1a5c2e")
+      .text("PARTIES");
+   doc.strokeColor("#dddddd").lineWidth(0.5)
+      .moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+   doc.moveDown(0.5);
+
+   // Aggregator
+   doc.fontSize(10).font("Helvetica-Bold").fillColor("#333333")
+      .text("Aggregator (Seller):");
+   doc.fontSize(10).font("Helvetica").fillColor("#555555");
+   if (agreement.aggregator_company) doc.text(`  Company: ${agreement.aggregator_company}`);
+   const aggName = [agreement.aggregator_fname, agreement.aggregator_lname].filter(Boolean).join(" ");
+   if (aggName) doc.text(`  Representative: ${aggName}`);
+   if (agreement.aggregator_email) doc.text(`  Email: ${agreement.aggregator_email}`);
+   doc.moveDown(0.5);
+
+   // Buyer
+   doc.fontSize(10).font("Helvetica-Bold").fillColor("#333333")
+      .text("Buyer:");
+   doc.fontSize(10).font("Helvetica").fillColor("#555555");
+   if (agreement.buyer_name) doc.text(`  Name: ${agreement.buyer_name}`);
+   if (agreement.buyer_company) doc.text(`  Company: ${agreement.buyer_company}`);
+   if (agreement.buyer_email) doc.text(`  Email: ${agreement.buyer_email}`);
+   if (agreement.buyer_phone) doc.text(`  Phone: ${agreement.buyer_phone}`);
+   if (agreement.buyer_address) doc.text(`  Address: ${agreement.buyer_address}`);
+   doc.moveDown(1);
+
+   // === PRODUCT DETAILS ===
+   doc.fontSize(12).font("Helvetica-Bold").fillColor("#1a5c2e")
+      .text("PRODUCT DETAILS");
+   doc.strokeColor("#dddddd").lineWidth(0.5)
+      .moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+   doc.moveDown(0.5);
+
+   doc.fontSize(10).font("Helvetica").fillColor("#555555");
+   if (product.commodity) doc.text(`  Commodity: ${product.commodity}`);
+   if (product.quantity) doc.text(`  Quantity: ${product.quantity} ${product.unit || "units"}`);
+   if (product.price) doc.text(`  Unit Price: ${formatCurrency(product.price)}`);
+   if (product.location) doc.text(`  Location: ${product.location}`);
+   if (product.quality_grade) doc.text(`  Quality Grade: ${product.quality_grade}`);
+   if (product.delivery_date) doc.text(`  Expected Delivery: ${formatDate(product.delivery_date)}`);
+
+   doc.moveDown(0.5);
+   doc.fontSize(11).font("Helvetica-Bold").fillColor("#333333")
+      .text(`  Total Procurement Value: ${formatCurrency(agreement.financing_amount)}`);
+   doc.moveDown(0.5);
+   doc.fontSize(10).font("Helvetica").fillColor("#555555")
+      .text(`  Type: ${agreement.is_pre_harvest ? "Pre-Harvest (Scenario A)" : "Post-Harvest (Scenario B)"}`);
+   doc.moveDown(1);
+
+   // === TERMS & CONDITIONS ===
+   if (agreement.terms_and_conditions) {
+      doc.fontSize(12).font("Helvetica-Bold").fillColor("#1a5c2e")
+         .text("TERMS & CONDITIONS");
+      doc.strokeColor("#dddddd").lineWidth(0.5)
+         .moveTo(50, doc.y).lineTo(545, doc.y).stroke();
       doc.moveDown(0.5);
-      doc.text("BUYER (Purchaser):", 50, doc.y, { bold: true });
-      doc.text(`${buyer.buyer_name}`, 200, doc.y - 10);
-      doc.moveDown(0.5);
-      doc.text("COMPANY:", 50, doc.y, { bold: true });
-      doc.text(`${buyer.company_name || "N/A"}`, 200, doc.y - 10);
-      doc.moveDown(2);
 
-      // Section: Commodity Details
-      doc.rect(50, doc.y, 500, 25).fill(darkTheme);
-      doc.fillColor("#FFFFFF").text("COMMODITY & ORDER SPECIFICATIONS", 60, doc.y + 7);
-      doc.moveDown(2);
-
-      doc.fillColor(darkTheme);
-      const startY = doc.y;
-      doc.text("ITEM", 50, startY, { bold: true });
-      doc.text("QUANTITY", 200, startY, { bold: true });
-      doc.text("UNIT PRICE", 350, startY, { bold: true });
-      doc.text("TOTAL VALUE", 450, startY, { bold: true });
-
-      doc.moveTo(50, startY + 15).lineTo(550, startY + 15).stroke();
+      doc.fontSize(9).font("Helvetica").fillColor("#555555")
+         .text(agreement.terms_and_conditions, { align: "justify", lineGap: 3 });
       doc.moveDown(1);
+   }
 
-      doc.text(agreement.product_details.commodity, 50, doc.y);
-      doc.text(`${agreement.product_details.quantity}`, 200, doc.y - 10);
-      doc.text(`N${parseFloat(agreement.product_details.price).toLocaleString()}`, 350, doc.y - 10);
-      doc.fillColor(greenTheme).text(`N${parseFloat(agreement.financing_amount).toLocaleString()}`, 450, doc.y - 10);
+   // === SIGNATURE SECTION ===
+   doc.fontSize(12).font("Helvetica-Bold").fillColor("#1a5c2e")
+      .text("SIGNATURES");
+   doc.strokeColor("#dddddd").lineWidth(0.5)
+      .moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+   doc.moveDown(1);
 
-      doc.moveDown(3);
+   const sigY = doc.y;
 
-      // Section: Terms
-      doc.fillColor(darkTheme).fontSize(12).text("Terms & Conditions", { underline: true });
-      doc.moveDown(1);
-      doc.fontSize(9).text(agreement.terms_and_conditions || "This agreement is subject to the standard platform fulfillment and quality control guidelines. Payments are held in secure escrow until delivery verification.", { width: 500, align: "justify" });
+   // Aggregator signature
+   doc.fontSize(10).font("Helvetica").fillColor("#555555")
+      .text("____________________________", 50, sigY)
+      .text(agreement.aggregator_company || "Aggregator", 50, sigY + 18)
+      .text("(Aggregator)", 50, sigY + 32);
 
-      // Signatures
-      doc.moveDown(5);
-      const sigY = doc.y;
-      doc.moveTo(50, sigY).lineTo(200, sigY).stroke();
-      doc.text("Aggregator Signature", 50, sigY + 5);
+   // Buyer signature
+   doc.text("____________________________", 320, sigY)
+      .text(agreement.buyer_name || "Buyer", 320, sigY + 18)
+      .text("(Buyer)", 320, sigY + 32);
 
-      doc.moveTo(350, sigY).lineTo(500, sigY).stroke();
-      doc.text("Buyer Signature & Stamp", 350, sigY + 5);
+   doc.moveDown(4);
 
-      doc.fontSize(8).fillColor("#9CA3AF").text(`Generated securely by Agronoria Platform on ${new Date().toLocaleDateString()}`, 50, 750, { align: "center" });
-
-      doc.end();
-   });
+   // === FOOTER ===
+   const footerY = doc.page.height - 60;
+   doc.fontSize(8).font("Helvetica").fillColor("#aaaaaa")
+      .text(
+         "This document was generated by the Agri-Noria Platform. For inquiries, contact support@agri-noria.com",
+         50, footerY, { align: "center", width: 495 }
+      );
+   doc.text(
+      `Generated on ${new Date().toLocaleDateString("en-NG", { year: "numeric", month: "long", day: "numeric" })}`,
+      50, footerY + 12, { align: "center", width: 495 }
+   );
 }

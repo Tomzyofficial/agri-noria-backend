@@ -9,14 +9,11 @@ import { generateShipmentStartTemplate } from "./generateShipmentStartTemplate.j
 
 class EmailService {
   constructor() {
-    // Configure nodemailer transporter
-    // prefer explicit host/port/secure values rather than using `service` with a hostname
-    // set EMAIL_PORT to 465 (secure) or 587 (STARTTLS) and EMAIL_SECURE to "true" when using 465
     this.transporter = nodemailer.createTransport({
       pool: true,
       host: process.env.EMAIL_HOST,
       port: process.env.EMAIL_PORT,
-      secure: process.env.EMAIL_SECURE, // true for 465, false for 587
+      secure: process.env.EMAIL_SECURE === "true", // true for 465, false for 587
       family: 4, // IPv4
       auth: {
         user: process.env.EMAIL_USER,

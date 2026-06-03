@@ -174,4 +174,47 @@ buyerAuthController.signout = (req, res) => {
   }
 };
 
+import { verifyBuyerToken } from "../../../sessions/buyer.auth.session.js";
+import { updateBuyerProfile } from "../../../db/buyer/buyer.auth.db.js";
+
+buyerAuthController.updateProfile = async (req, res) => {
+  try {
+    const payload = await verifyBuyerToken(req);
+    if (!payload || !payload.buyer_id) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const {
+      name,
+      phone,
+      companyName,
+      registrationNumber,
+      taxId,
+      headquarters,
+    } = req.body;
+
+    const updated = await updateBuyerProfile(payload.buyer_id, {
+      name: name?.trim(),
+      phone: phone?.trim(),
+      company_name: companyName?.trim(),
+      registration_number: registrationNumber?.trim(),
+      tax_id: taxId?.trim(),
+      headquarters: headquarters?.trim(),
+    });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: "Buyer not found or update failed." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    return res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
 export default buyerAuthController;

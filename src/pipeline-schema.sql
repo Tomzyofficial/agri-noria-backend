@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS input_requests (
    funds_status VARCHAR(50) DEFAULT 'pending', -- pending, approved, rejected
    items_status VARCHAR(50) DEFAULT 'pending', -- pending, approved, rejected, assigned
    is_cluster_request BOOLEAN DEFAULT false,
+   requester_type VARCHAR(50) DEFAULT 'farmer',
+   requester_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+   total_amount DECIMAL(15,2) DEFAULT 0,
    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
@@ -382,9 +385,13 @@ CREATE TABLE IF NOT EXISTS buyer_ecosystem_orders (
    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
    buyer_id UUID REFERENCES vendors(id) ON DELETE CASCADE,
    total_amount DECIMAL(15,2) NOT NULL,
-   status VARCHAR(50) DEFAULT 'pending', -- pending, paid, assigned, in_transit, delivered, cancelled
+   status VARCHAR(50) DEFAULT 'pending', -- pending, payment_processing, payment_pending_finance, ready_for_sales, processing, processed, paid, assigned, in_transit, delivered, cancelled
+   payment_status VARCHAR(50) DEFAULT 'unpaid', -- unpaid, processing, paystack_verified, finance_confirmed, failed, refunded
+   finance_status VARCHAR(50) DEFAULT 'not_required', -- not_required, pending, pending_confirmation, confirmed, rejected
    escrow_status VARCHAR(50) DEFAULT 'none', -- none, held, released, refunded
    distributor_id UUID REFERENCES vendors(id),
+   finance_confirmed_by UUID REFERENCES vendors(id),
+   finance_confirmed_at TIMESTAMP WITH TIME ZONE,
    delivery_address TEXT,
    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
@@ -395,9 +402,30 @@ CREATE TABLE IF NOT EXISTS buyer_ecosystem_order_items (
    order_id UUID REFERENCES buyer_ecosystem_orders(id) ON DELETE CASCADE,
    product_id UUID, 
    product_name VARCHAR(255),
-   quantity INTEGER NOT NULL DEFAULT 1,
+   quantity NUMERIC(10,2) NOT NULL DEFAULT 1,
    price_per_unit DECIMAL(15,2) NOT NULL,
    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS buyer_ecosystem_order_payments (
+   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+   order_id UUID NOT NULL REFERENCES buyer_ecosystem_orders(id) ON DELETE CASCADE,
+   buyer_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+   amount DECIMAL(15,2) NOT NULL,
+   currency VARCHAR(10) DEFAULT 'NGN',
+   payment_provider VARCHAR(50) DEFAULT 'paystack',
+   provider_reference VARCHAR(255) UNIQUE,
+   provider_payment_code VARCHAR(255),
+   status VARCHAR(50) DEFAULT 'pending', -- pending, processing, paystack_verified, finance_confirmed, failed, refunded
+   finance_status VARCHAR(50) DEFAULT 'pending', -- pending, confirmed, rejected
+   finance_confirmed_by UUID REFERENCES vendors(id),
+   finance_confirmed_at TIMESTAMP WITH TIME ZONE,
+   finance_note TEXT,
+   payment_method VARCHAR(50),
+   metadata JSONB DEFAULT '{}',
+   paid_at TIMESTAMP WITH TIME ZONE,
+   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS buyer_ecosystem_escrow (
@@ -415,7 +443,19 @@ CREATE TABLE IF NOT EXISTS buyer_ecosystem_escrow (
 -- INDEXES for Ecosystem Buyer Orders
 CREATE INDEX IF NOT EXISTS idx_eco_orders_buyer ON buyer_ecosystem_orders(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_eco_orders_status ON buyer_ecosystem_orders(status);
+CREATE INDEX IF NOT EXISTS idx_eco_orders_payment_status ON buyer_ecosystem_orders(payment_status);
+CREATE INDEX IF NOT EXISTS idx_eco_orders_finance_status ON buyer_ecosystem_orders(finance_status);
+CREATE INDEX IF NOT EXISTS idx_eco_payments_order ON buyer_ecosystem_order_payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_eco_payments_buyer ON buyer_ecosystem_order_payments(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_eco_payments_status ON buyer_ecosystem_order_payments(status);
+CREATE INDEX IF NOT EXISTS idx_eco_payments_reference ON buyer_ecosystem_order_payments(provider_reference);
 CREATE INDEX IF NOT EXISTS idx_eco_escrow_order ON buyer_ecosystem_escrow(order_id);
+
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'unpaid';
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_status VARCHAR(50) DEFAULT 'not_required';
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_confirmed_by UUID REFERENCES vendors(id);
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_confirmed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE buyer_ecosystem_order_items ALTER COLUMN quantity TYPE NUMERIC(10,2);
 
 -- STAGE 17: MARKETPLACE DATA
 CREATE TABLE IF NOT EXISTS marketplace_prices (

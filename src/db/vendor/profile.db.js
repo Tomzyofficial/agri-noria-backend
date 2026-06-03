@@ -254,3 +254,16 @@ export async function finalizeOnboarding(vendor_id) {
     return false;
   }
 }
+
+export async function updateVendorBasicInfo(id, fname, lname, phone) {
+   try {
+      const { rows } = await pool.query(
+         `UPDATE vendors SET fname = COALESCE($1, fname), lname = COALESCE($2, lname), phone = COALESCE($3, phone) WHERE id = $4 RETURNING id, fname, lname, phone, email`,
+         [fname, lname, phone, id]
+      );
+      return rows[0] || null;
+   } catch (error) {
+      console.error("Database error in updateVendorBasicInfo:", error);
+      return null;
+   }
+}

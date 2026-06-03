@@ -39,3 +39,19 @@ export async function getCartItem(buyer_id) {
    const { rows } = await pool.query("SELECT * FROM cart_items WHERE buyer_id = $1", [buyer_id]);
    return rows[0] || null;
 }
+
+export async function updateBuyerProfile(buyer_id, { name, phone, company_name, registration_number, tax_id, headquarters }) {
+   const { rows } = await pool.query(
+      `UPDATE buyers SET 
+         name = $1, 
+         phone = $2, 
+         company_name = $3, 
+         registration_number = $4, 
+         tax_id = $5, 
+         headquarters = $6,
+         updated_at = now()
+       WHERE buyer_id = $7 RETURNING *`,
+      [name, phone, company_name, registration_number, tax_id, headquarters, buyer_id]
+   );
+   return rows[0] || null;
+}

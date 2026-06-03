@@ -32,11 +32,13 @@ export async function verifyVendor(req, res) {
     return res.status(200).json({
       authenticated: true,
       userId: payload.id,
-      fname: payload.fname,
-      lname: payload.lname,
+      fname: user?.fname || payload.fname,
+      lname: user?.lname || payload.lname,
+      phone: user?.phone || payload.phone || "",
       email: payload.email,
       workspace: payload.workspace,
       role: payload.role,
+      account_type: payload.account_type || payload.role,
       onboarding_status: onboardingStatus,
     });
   } catch (error) {

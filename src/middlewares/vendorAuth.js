@@ -11,7 +11,7 @@ const encodedKey = getSecretKey();
 
 export const requireVendorAuth = async (req, res, next) => {
    try {
-      let token = req.cookies?.["vendor_session"];
+      let token = req.cookies?.["vendor_session"] || req.cookies?.["vendor-session"];
 
       if (!token && req.headers.authorization?.startsWith("Bearer ")) {
          token = req.headers.authorization.split(" ")[1];

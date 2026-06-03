@@ -20,6 +20,8 @@ router.get("/finance-wallet/me", aggregatorController.getMyFinanceWallet);
 // Public Routes (Review & Payment)
 router.get("/review-agreement/:token", aggregatorController.getAgreementForReview);
 router.post("/initialize-payment/:token", aggregatorController.initializePayment);
+router.post("/verify-stamp/:token", aggregatorController.verifyAndStampAgreement);
+router.get("/agreement-pdf/:token", aggregatorController.downloadAgreementPDF);
 
 // Marketplace, Settings & Wallet
 router.get("/marketplace-data", aggregatorController.getMarketplaceData);

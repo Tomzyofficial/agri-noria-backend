@@ -1,5 +1,6 @@
 import { getInstitutionAnalytics, getInstitutionTransactions } from "../../db/admin/admin.db.js";
-import { getPendingInputRequests, approveAndAssignInputRequest, getAllDistributors, approveInputFunds } from "../../db/pipeline/pipeline.db.js";
+import { getPendingInputRequests, approveAndAssignInputRequest, getAllDistributors, approveInputFunds, getWalletByOwner, createWallet, depositLockedFunds } from "../../db/pipeline/pipeline.db.js";
+import pool from "../../lib/connect.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const institutionAdminController = {};
@@ -25,6 +26,74 @@ institutionAdminController.getAnalytics = async (req, res) => {
    } catch (error) {
       console.error("Error fetching institution analytics:", error);
       return res.status(500).json({ success: false, error: "Failed to fetch institution analytics" });
+   }
+};
+
+// Get portfolio metrics for institution dashboard
+institutionAdminController.getPortfolio = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) {
+         return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const role = payload.account_type?.toLowerCase();
+      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
+      
+      if (!allowedRoles.includes(role)) {
+         return res.status(403).json({ success: false, error: "Forbidden: Institutional access required" });
+      }
+
+      // Import inside or use existing if it's already at top level
+      const { getInstitutionPortfolio } = await import("../../db/admin/admin.db.js");
+      const portfolio = await getInstitutionPortfolio();
+      return res.status(200).json({ success: true, data: portfolio });
+   } catch (error) {
+      console.error("Error fetching institution portfolio:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch institution portfolio" });
+   }
+};
+
+// Get impact metrics for institution dashboard
+institutionAdminController.getImpact = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) {
+         return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const role = payload.account_type?.toLowerCase();
+      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
+      
+      if (!allowedRoles.includes(role)) {
+         return res.status(403).json({ success: false, error: "Forbidden: Institutional access required" });
+      }
+
+      const { getInstitutionImpact } = await import("../../db/admin/admin.db.js");
+      const impact = await getInstitutionImpact();
+      return res.status(200).json({ success: true, data: impact });
+   } catch (error) {
+      console.error("Error fetching institution impact:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch institution impact" });
+   }
+};
+
+// Update institution profile
+institutionAdminController.updateProfile = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) {
+         return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      // We can reuse aggregatorDb.updateProfile since it just updates the vendors table
+      const aggregatorDb = (await import("../../db/aggregator/aggregator.db.js")).default;
+      const updatedProfile = await aggregatorDb.updateProfile(payload.id, req.body);
+      
+      return res.status(200).json({ success: true, data: updatedProfile });
+   } catch (error) {
+      console.error("Error updating profile:", error);
+      return res.status(500).json({ success: false, error: "Failed to update profile" });
    }
 };
 
@@ -119,6 +188,31 @@ institutionAdminController.approveFunds = async (req, res) => {
       }
 
       const updatedRequest = await approveInputFunds(requestId, payload.id);
+
+      // ENSURE FUNDS ARE NOT WITHDRAWABLE (DEPOSIT TO LOCKED BALANCE)
+      if (updatedRequest.is_cluster_request) {
+         let clusterWallet = await getWalletByOwner(updatedRequest.cluster_id, "cluster");
+         if (!clusterWallet) {
+             clusterWallet = await createWallet(updatedRequest.cluster_id, "cluster");
+             if (!clusterWallet) clusterWallet = await getWalletByOwner(updatedRequest.cluster_id, "cluster");
+         }
+         if (clusterWallet) {
+            await depositLockedFunds(clusterWallet.id, parseFloat(updatedRequest.total_value), "Input financing approved", updatedRequest.id, "input_request");
+         }
+      } else {
+         const { rows } = await pool.query("SELECT vendor_id FROM farmer_profiles WHERE id = $1", [updatedRequest.farmer_id]);
+         if (rows.length > 0) {
+            let farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
+            if (!farmerWallet) {
+                farmerWallet = await createWallet(rows[0].vendor_id, "farmer");
+                if (!farmerWallet) farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
+            }
+            if (farmerWallet) {
+               await depositLockedFunds(farmerWallet.id, parseFloat(updatedRequest.total_value), "Input financing approved", updatedRequest.id, "input_request");
+            }
+         }
+      }
+
       return res.status(200).json({ success: true, data: updatedRequest });
    } catch (error) {
       console.error("Error approving funds:", error);

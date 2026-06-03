@@ -139,10 +139,11 @@ async function createFarmerProfile(data) {
 
 async function getFarmerProfileByVendor(vendorId) {
    const { rows } = await pool.query(
-      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date
+      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, cm.cluster_id
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN programs p ON fp.program_id = p.id
+       LEFT JOIN cluster_members cm ON cm.farmer_id = fp.id
        WHERE fp.vendor_id = $1`,
       [vendorId]
    );
@@ -205,7 +206,9 @@ async function getAllClusters() {
        (SELECT status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_status,
        (SELECT id FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as pending_request_id,
        (SELECT w.balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_balance,
-       (SELECT w.locked_balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_locked_balance
+       (SELECT w.locked_balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_locked_balance,
+       (SELECT dv.fname || ' ' || dv.lname FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY ir.created_at DESC LIMIT 1) as distributor_name,
+       (SELECT dv.phone FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY ir.created_at DESC LIMIT 1) as distributor_phone
        FROM clusters c
        LEFT JOIN vendors v ON c.supervisor_id = v.id
        LEFT JOIN programs p ON c.program_id = p.id
@@ -215,25 +218,6 @@ async function getAllClusters() {
 }
 
 async function assignFarmerToCluster(clusterId, farmerId) {
-   // Check eligibility first
-   const { rows: eligibility } = await pool.query(
-      `SELECT fp.id, fp.onboarding_status,
-       (SELECT COUNT(*) FROM training_modules tm WHERE tm.program_id = fp.program_id) as total_modules,
-       (SELECT COUNT(*) FROM farmer_training_progress ftp WHERE ftp.farmer_id = fp.id AND ftp.status = 'completed') as completed_modules
-       FROM farmer_profiles fp
-       WHERE fp.id = $1`,
-      [farmerId]
-   );
-
-   const farmer = eligibility[0];
-   if (!farmer) throw new Error("Farmer not found");
-   if (farmer.onboarding_status !== 'completed' && farmer.onboarding_status !== 'verified') {
-      throw new Error("Farmer is not verified yet");
-   }
-   if (farmer.total_modules > 0 && farmer.completed_modules < farmer.total_modules) {
-      throw new Error("Farmer has not completed all training modules");
-   }
-
    const { rows } = await pool.query(
       `INSERT INTO cluster_members (cluster_id, farmer_id, role)
        VALUES ($1, $2, 'farmer')
@@ -260,7 +244,7 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
    let params = [];
 
    if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
-      query += `, (3959 * acos(cos(radians(c.gps_latitude)) * cos(radians(fp.gps_latitude)) * cos(radians(fp.gps_longitude) - radians(c.gps_longitude)) + sin(radians(c.gps_latitude)) * sin(radians(fp.gps_latitude)))) AS distance
+      query += `, (3959 * acos(GREATEST(-1.0, LEAST(1.0, cos(radians(c.gps_latitude)) * cos(radians(fp.gps_latitude)) * cos(radians(fp.gps_longitude) - radians(c.gps_longitude)) + sin(radians(c.gps_latitude)) * sin(radians(fp.gps_latitude)))))) AS distance
       FROM farmer_profiles fp
       JOIN vendors v ON fp.vendor_id = v.id
       CROSS JOIN (SELECT gps_latitude, gps_longitude FROM clusters WHERE id = $1) c`;
@@ -269,32 +253,16 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
       query += ` FROM farmer_profiles fp JOIN vendors v ON fp.vendor_id = v.id`;
    }
 
-   query += ` WHERE (fp.onboarding_status = 'completed' OR fp.onboarding_status = 'verified')`;
+   query += ` WHERE 1=1`;
 
-   if (programId && programId !== 'null' && programId !== 'undefined') {
-      params.push(programId);
-      const paramPlaceholder = `$${params.length}`;
-      query += ` AND fp.program_id = ${paramPlaceholder}
-        AND (
-           SELECT COUNT(*) FROM training_modules tm WHERE tm.program_id = fp.program_id
-        ) = (
-           SELECT COUNT(*) FROM farmer_training_progress ftp WHERE ftp.farmer_id = fp.id AND ftp.status = 'completed'
-        )
-        AND NOT EXISTS (
-           SELECT 1 FROM cluster_members cm JOIN clusters cl ON cm.cluster_id = cl.id
-           WHERE cm.farmer_id = fp.id AND cl.program_id = ${paramPlaceholder}
-        )`;
-   } else {
-      // If no program is specified, they just shouldn't be in this cluster yet
-      if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
-         query += ` AND NOT EXISTS (
-            SELECT 1 FROM cluster_members cm WHERE cm.farmer_id = fp.id AND cm.cluster_id = $1
-         )`;
-      }
+   if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
+      query += ` AND NOT EXISTS (
+         SELECT 1 FROM cluster_members cm WHERE cm.farmer_id = fp.id AND cm.cluster_id = $1
+      )`;
    }
 
    if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
-      query += ` ORDER BY distance ASC`;
+      query += ` ORDER BY distance ASC NULLS LAST`;
    }
 
    const { rows } = await pool.query(query, params);
@@ -346,7 +314,8 @@ async function removeFarmerFromCluster(clusterId, farmerId, supervisorId) {
 async function getFarmerCluster(clusterId) {
    const { rows } = await pool.query(
       `SELECT c.*, v.fname as supervisor_fname, v.lname as supervisor_lname, v.phone as supervisor_phone,
-       (SELECT COUNT(*) FROM cluster_members WHERE cluster_id = c.id) as farmer_count
+       (SELECT COUNT(*) FROM cluster_members WHERE cluster_id = c.id) as farmer_count,
+       (SELECT COALESCE(SUM(fp.farm_size_hectares), 0) FROM farmer_profiles fp JOIN cluster_members cm ON fp.id = cm.farmer_id WHERE cm.cluster_id = c.id) as total_hectares
        FROM clusters c
        JOIN vendors v ON c.supervisor_id = v.id
        WHERE c.id = $1`,
@@ -507,6 +476,16 @@ async function updateInputRequestItems(requestId, input_items) {
        WHERE id = $3 RETURNING *`,
       [JSON.stringify(input_items), totalValue, requestId]
    );
+
+   const ownerId = reqData[0].requester_type === 'farmer' ? reqData[0].farmer_id : reqData[0].cluster_id;
+   const ownerType = reqData[0].requester_type === 'farmer' ? 'farmer' : 'cluster';
+   await pool.query(
+      `UPDATE wallets 
+       SET locked_balance = GREATEST(0, locked_balance - $1), updated_at = now() 
+       WHERE owner_id = $2 AND owner_type = $3`,
+      [totalValue, ownerId, ownerType]
+   );
+
    return rows[0];
 }
 
@@ -850,7 +829,7 @@ async function updateRepayment(repaymentId, recoveredAmount) {
 async function getPipelineStats() {
    const client = await pool.connect();
    try {
-      const [farmers, programs, clusters, pendingInputs, verifications, sales, walletTotal, deployed] = await Promise.all([
+      const [farmers, programs, clusters, pendingInputs, verifications, sales, walletTotal, deployed, repayments, distribution] = await Promise.all([
          client.query("SELECT COUNT(*) as count FROM vendors WHERE LOWER(account_type) = 'farmer'"),
          client.query("SELECT COUNT(*) as count FROM programs WHERE status = 'active'"),
          client.query("SELECT COUNT(*) as count FROM clusters WHERE status = 'active'"),
@@ -859,6 +838,11 @@ async function getPipelineStats() {
          client.query("SELECT COALESCE(SUM(sale_amount),0) as total FROM sales"),
          client.query("SELECT COALESCE(SUM(balance),0) as total, COALESCE(SUM(locked_balance),0) as locked FROM wallets"),
          client.query("SELECT COALESCE(SUM(total_value),0) as total FROM input_requests WHERE funds_status = 'approved'"),
+         client.query("SELECT COALESCE(SUM(recovered_amount),0) as recovered, COALESCE(SUM(financing_amount),0) as total FROM repayments"),
+         client.query(`SELECT 
+            COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' THEN 1 END), 0) as seed_pct,
+            COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' THEN 1 END), 0) as fert_pct
+            FROM input_requests`)
       ]);
       return {
          activeFarmers: parseInt(farmers.rows[0].count),
@@ -870,6 +854,10 @@ async function getPipelineStats() {
          totalWalletBalance: parseFloat(walletTotal.rows[0].total),
          totalLockedFunds: parseFloat(walletTotal.rows[0].locked),
          totalDeployed: parseFloat(deployed.rows[0].total),
+         repaymentsRecovered: parseFloat(repayments.rows[0].recovered),
+         repaymentsTotal: parseFloat(repayments.rows[0].total),
+         seedDisbursementPct: parseFloat(distribution.rows[0].seed_pct || 0),
+         fertilizerAllocationPct: parseFloat(distribution.rows[0].fert_pct || 0),
       };
    } finally {
       client.release();
@@ -883,7 +871,7 @@ async function getSalesStats() {
          client.query("SELECT COUNT(*) as count FROM logistics WHERE status = 'in_transit'"),
          client.query("SELECT COUNT(*) as count FROM logistics WHERE status = 'pending'"),
          client.query("SELECT COUNT(*) as count FROM sales WHERE status = 'settled' OR status = 'completed'"),
-         client.query("SELECT COALESCE(SUM(quantity_tons), 0) as total FROM warehouse_stocks"),
+         client.query("SELECT COALESCE(SUM(CASE WHEN measuring_scale = 'Kg' THEN quantity / 1000 WHEN measuring_scale = 'g' THEN quantity / 1000000 ELSE quantity END), 0) as total FROM warehouse_stocks"),
       ]);
       return {
          activeShipments: parseInt(shipments.rows[0].count),
@@ -918,37 +906,77 @@ async function getIntelligenceStats() {
 
 async function getAllDistributors() {
    const { rows } = await pool.query(
-      "SELECT id, fname, lname, email, phone FROM vendors WHERE LOWER(account_type) = 'distributor'"
+      `SELECT v.id, v.fname, v.lname, CONCAT(v.fname, ' ', v.lname) AS name, 
+              v.email, v.phone, v.company_name,
+              vd.business_name, vd.address AS location, vd.business_desc, vd.hot_line_phone_number
+       FROM vendors v
+       LEFT JOIN vendor_documents vd ON v.id = vd.vendor_id
+       WHERE LOWER(v.account_type) = 'distributor'`
    );
    return rows;
+}
+
+function normalizeEcosystemOrderItem(item) {
+   const pricePerUnit = Number(
+      item.price_per_unit ?? item.unit_price ?? item.price ?? item.current_price
+   );
+   const quantity = Number(item.quantity ?? item.qty ?? item.selectedQty ?? 1);
+
+   if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error(`Invalid quantity for ${item.product_name || item.commodity || "order item"}`);
+   }
+
+   if (!Number.isFinite(pricePerUnit) || pricePerUnit <= 0) {
+      throw new Error(`Missing price_per_unit for ${item.product_name || item.commodity || "order item"}`);
+   }
+
+   return {
+      product_id: item.product_id || item.id || null,
+      product_name: item.product_name || item.commodity || item.name || null,
+      quantity,
+      price_per_unit: pricePerUnit,
+   };
 }
 
 async function createEcosystemOrder(buyerId, items, totalAmount, deliveryAddress, status = 'pending', escrowStatus = 'none') {
    const client = await pool.connect();
    try {
       await client.query("BEGIN");
-      const { rows } = await client.query(
-         "INSERT INTO buyer_ecosystem_orders (buyer_id, total_amount, delivery_address, status, escrow_status) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-         [buyerId, totalAmount, deliveryAddress, status, escrowStatus]
+      const normalizedItems = items.map(normalizeEcosystemOrderItem);
+      const computedTotal = normalizedItems.reduce(
+         (sum, item) => sum + item.quantity * item.price_per_unit,
+         0
       );
-      const orderId = rows[0].id;
+      const orderTotal = Number.isFinite(Number(totalAmount)) && Number(totalAmount) > 0
+         ? Number(totalAmount)
+         : computedTotal;
 
-      for (const item of items) {
+      const { rows } = await client.query(
+         `INSERT INTO buyer_ecosystem_orders (
+            buyer_id, total_amount, delivery_address, status, escrow_status,
+            payment_status, finance_status
+          ) VALUES ($1, $2, $3, $4, $5, 'unpaid', 'not_required')
+          RETURNING *`,
+         [buyerId, orderTotal, deliveryAddress, status, escrowStatus]
+      );
+      const order = rows[0];
+
+      for (const item of normalizedItems) {
          await client.query(
             "INSERT INTO buyer_ecosystem_order_items (order_id, product_id, product_name, quantity, price_per_unit) VALUES ($1, $2, $3, $4, $5)",
-            [orderId, item.product_id, item.product_name, item.quantity, item.price_per_unit]
+            [order.id, item.product_id, item.product_name, item.quantity, item.price_per_unit]
          );
       }
 
       if (escrowStatus === 'held') {
          await client.query(
             "INSERT INTO buyer_ecosystem_escrow (order_id, buyer_id, amount, payment_reference, status) VALUES ($1, $2, $3, $4, 'held')",
-            [orderId, buyerId, totalAmount, `MANUAL-${Date.now()}`]
+            [order.id, buyerId, orderTotal, `MANUAL-${Date.now()}`]
          );
       }
 
       await client.query("COMMIT");
-      return { id: orderId };
+      return order;
    } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -959,7 +987,12 @@ async function createEcosystemOrder(buyerId, items, totalAmount, deliveryAddress
 
 async function getEcosystemOrders(buyerId) {
    const { rows } = await pool.query(
-      "SELECT o.*, (SELECT json_agg(i) FROM buyer_ecosystem_order_items i WHERE i.order_id = o.id) as items FROM buyer_ecosystem_orders o WHERE o.buyer_id = $1 ORDER BY o.created_at DESC",
+      `SELECT o.*,
+       (SELECT json_agg(i) FROM buyer_ecosystem_order_items i WHERE i.order_id = o.id) as items,
+       (SELECT row_to_json(p) FROM buyer_ecosystem_order_payments p WHERE p.order_id = o.id ORDER BY p.created_at DESC LIMIT 1) as payment
+       FROM buyer_ecosystem_orders o
+       WHERE o.buyer_id = $1
+       ORDER BY o.created_at DESC`,
       [buyerId]
    );
    return rows;
@@ -967,9 +1000,171 @@ async function getEcosystemOrders(buyerId) {
 
 async function getAllEcosystemOrders() {
    const { rows } = await pool.query(
-      "SELECT o.*, v.company_name as buyer_name, (SELECT json_agg(i) FROM buyer_ecosystem_order_items i WHERE i.order_id = o.id) as items FROM buyer_ecosystem_orders o JOIN vendors v ON o.buyer_id = v.id ORDER BY o.created_at DESC"
+      `SELECT o.*, v.company_name as buyer_name,
+       (SELECT json_agg(i) FROM buyer_ecosystem_order_items i WHERE i.order_id = o.id) as items,
+       (SELECT row_to_json(p) FROM buyer_ecosystem_order_payments p WHERE p.order_id = o.id ORDER BY p.created_at DESC LIMIT 1) as payment
+       FROM buyer_ecosystem_orders o
+       JOIN vendors v ON o.buyer_id = v.id
+       ORDER BY o.created_at DESC`
    );
    return rows;
+}
+
+async function getEcosystemOrderForPayment(orderId, buyerId) {
+   const { rows } = await pool.query(
+      `SELECT o.*, v.email, v.fname, v.lname
+       FROM buyer_ecosystem_orders o
+       JOIN vendors v ON v.id = o.buyer_id
+       WHERE o.id = $1 AND o.buyer_id = $2`,
+      [orderId, buyerId]
+   );
+   return rows[0] || null;
+}
+
+async function createEcosystemOrderPayment(orderId, buyerId, amount, metadata = {}) {
+   const { rows } = await pool.query(
+      `INSERT INTO buyer_ecosystem_order_payments (
+         order_id, buyer_id, amount, currency, payment_provider, status,
+         finance_status, payment_method, metadata
+       ) VALUES ($1, $2, $3, 'NGN', 'paystack', 'pending', 'pending', 'card', $4)
+       RETURNING *`,
+      [orderId, buyerId, amount, JSON.stringify(metadata)]
+   );
+   return rows[0];
+}
+
+async function markEcosystemOrderPaymentProcessing(paymentId, providerReference, metadata = {}) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+         `UPDATE buyer_ecosystem_order_payments
+          SET status = 'processing',
+              provider_reference = $1,
+              metadata = COALESCE($2, metadata)::jsonb,
+              updated_at = now()
+          WHERE id = $3
+          RETURNING *`,
+         [providerReference, JSON.stringify(metadata), paymentId]
+      );
+      const payment = rows[0];
+      await client.query(
+         `UPDATE buyer_ecosystem_orders
+          SET status = 'payment_processing',
+              payment_status = 'processing',
+              finance_status = 'pending',
+              updated_at = now()
+          WHERE id = $1`,
+         [payment.order_id]
+      );
+      await client.query("COMMIT");
+      return payment;
+   } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+   } finally {
+      client.release();
+   }
+}
+
+async function getEcosystemOrderPaymentByReference(reference) {
+   const { rows } = await pool.query(
+      `SELECT p.*, o.total_amount, o.status as order_status
+       FROM buyer_ecosystem_order_payments p
+       JOIN buyer_ecosystem_orders o ON o.id = p.order_id
+       WHERE p.provider_reference = $1`,
+      [reference]
+   );
+   return rows[0] || null;
+}
+
+async function recordEcosystemPaystackVerification(paymentId, providerPaymentCode, metadata = {}) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+         `UPDATE buyer_ecosystem_order_payments
+          SET status = 'paystack_verified',
+              provider_payment_code = $1,
+              metadata = COALESCE($2, metadata)::jsonb,
+              paid_at = now(),
+              updated_at = now()
+          WHERE id = $3
+          RETURNING *`,
+         [providerPaymentCode, JSON.stringify(metadata), paymentId]
+      );
+      const payment = rows[0];
+      await client.query(
+         `UPDATE buyer_ecosystem_orders
+          SET status = 'payment_pending_finance',
+              payment_status = 'paystack_verified',
+              finance_status = 'pending_confirmation',
+              updated_at = now()
+          WHERE id = $1`,
+         [payment.order_id]
+      );
+      await client.query("COMMIT");
+      return payment;
+   } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+   } finally {
+      client.release();
+   }
+}
+
+async function confirmEcosystemOrderPayment(orderId, financeUserId, financeNote = null) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      const { rows: paymentRows } = await client.query(
+         `SELECT *
+          FROM buyer_ecosystem_order_payments
+          WHERE order_id = $1 AND status IN ('paystack_verified', 'processing', 'pending')
+          ORDER BY created_at DESC
+          LIMIT 1
+          FOR UPDATE`,
+         [orderId]
+      );
+      if (!paymentRows.length) {
+         throw new Error("No eligible payment record found to confirm");
+      }
+
+      const payment = paymentRows[0];
+      const { rows: updatedPaymentRows } = await client.query(
+         `UPDATE buyer_ecosystem_order_payments
+          SET status = 'finance_confirmed',
+              finance_status = 'confirmed',
+              finance_confirmed_by = $1,
+              finance_confirmed_at = now(),
+              finance_note = $2,
+              updated_at = now()
+          WHERE id = $3
+          RETURNING *`,
+         [financeUserId, financeNote, payment.id]
+      );
+
+      const { rows: orderRows } = await client.query(
+         `UPDATE buyer_ecosystem_orders
+          SET status = 'ready_for_sales',
+              payment_status = 'finance_confirmed',
+              finance_status = 'confirmed',
+              finance_confirmed_by = $1,
+              finance_confirmed_at = now(),
+              updated_at = now()
+          WHERE id = $2
+          RETURNING *`,
+         [financeUserId, orderId]
+      );
+
+      await client.query("COMMIT");
+      return { order: orderRows[0], payment: updatedPaymentRows[0] };
+   } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+   } finally {
+      client.release();
+   }
 }
 
 async function processEscrowPayment(orderId, paymentRef) {
@@ -1000,10 +1195,16 @@ async function processEscrowPayment(orderId, paymentRef) {
 }
 
 async function assignOrderDistributor(orderId, distributorId) {
-   await pool.query(
-      "UPDATE buyer_ecosystem_orders SET distributor_id = $1, status = 'assigned', updated_at = now() WHERE id = $2",
+   const { rows } = await pool.query(
+      `UPDATE buyer_ecosystem_orders
+       SET distributor_id = $1, status = 'assigned', updated_at = now()
+       WHERE id = $2 AND finance_status = 'confirmed'
+       RETURNING *`,
       [distributorId, orderId]
    );
+   if (!rows.length) {
+      throw new Error("Finance must confirm payment before assigning this order");
+   }
    return true;
 }
 
@@ -1021,13 +1222,39 @@ async function getEcosystemOrdersByDistributor(distributorId) {
 }
 
 async function markOrderDelivered(orderId) {
-    await pool.query(
-       "UPDATE buyer_ecosystem_orders SET status = 'delivered', updated_at = now() WHERE id = $1",
-       [orderId]
-    );
-    return true;
- }
- 
+   const { rows } = await pool.query(
+      "UPDATE buyer_ecosystem_orders SET status = 'delivered', updated_at = now() WHERE id = $1 RETURNING *",
+      [orderId]
+   );
+   return rows[0];
+}
+
+async function updateEcosystemOrderStatus(orderId, status) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      const { rows: orderRows } = await client.query(
+         "SELECT id, payment_status, finance_status FROM buyer_ecosystem_orders WHERE id = $1 FOR UPDATE",
+         [orderId]
+      );
+      if (!orderRows.length) throw new Error("Order not found");
+      if (["processing", "processed", "in_progress"].includes(status) && orderRows[0].finance_status !== "confirmed") {
+         throw new Error("Finance must confirm payment before sales can process this order");
+      }
+      const { rows } = await client.query(
+         "UPDATE buyer_ecosystem_orders SET status = $1, updated_at = now() WHERE id = $2 RETURNING *",
+         [status, orderId]
+      );
+      await client.query("COMMIT");
+      return rows[0];
+   } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+   } finally {
+      client.release();
+   }
+}
+
 async function getDistributorStats(distributorId) {
    const { rows } = await pool.query(
       `SELECT 
@@ -1041,7 +1268,7 @@ async function getDistributorStats(distributorId) {
        WHERE distributor_id = $1`,
       [distributorId]
    );
-   
+
    const historyRes = await pool.query(
       `SELECT 
          TO_CHAR(created_at, 'Mon YYYY') as period,
@@ -1097,23 +1324,119 @@ async function updateLogisticsStatusDb(id, status) {
 
 async function getWarehouseInventoryStats() {
    const { rows } = await pool.query(
-      `SELECT id, commodity, quantity_tons as weight_tons, warehouse_name, 'A' as grade, status
+      `SELECT id, commodity, quantity, measuring_scale, price_per_unit, warehouse_name, 'A' as grade, status, created_at, updated_at
        FROM warehouse_stocks
+       WHERE status = 'available'
        ORDER BY created_at DESC`
    );
    return rows;
 }
 
-async function addWarehouseStock(commodity, quantityTons, warehouseName) {
+async function addWarehouseStock(commodity, quantity, measuringScale, pricePerUnit, warehouseName) {
    const { rows } = await pool.query(
-      `INSERT INTO warehouse_stocks (commodity, quantity_tons, warehouse_name, status)
-       VALUES ($1, $2, $3, 'available')
+      `INSERT INTO warehouse_stocks (commodity, quantity, measuring_scale, price_per_unit, warehouse_name, status)
+       VALUES ($1, $2, $3, $4, $5, 'available')
        RETURNING *`,
-      [commodity, quantityTons, warehouseName]
+      [commodity, quantity, measuringScale, pricePerUnit, warehouseName]
    );
    return rows[0];
 }
 
+async function removeWarehouseStock(id) {
+   const { rows } = await pool.query(
+      `DELETE FROM warehouse_stocks WHERE id = $1 RETURNING *`,
+      [id]
+   );
+   return rows[0];
+}
+
+// ============ CLUSTER-LEVEL SUPERVISION ============
+
+async function getClusterSupervision(clusterId) {
+   const { rows } = await pool.query(
+      "SELECT * FROM farm_supervisions WHERE cluster_id = $1",
+      [clusterId]
+   );
+   return rows[0] || null;
+}
+
+async function upsertClusterSupervision(data) {
+   const {
+      cluster_id, officer_id,
+      clearing_status = 'pending', clearing_notes = null,
+      irrigation_status = 'pending', irrigation_notes = null,
+      ridging_status = 'pending', ridging_notes = null,
+      weeding_status = 'pending', weeding_notes = null,
+      harvesting_status = 'pending', harvesting_notes = null
+   } = data;
+
+   // Check if a row exists for this cluster
+   const existing = await pool.query(
+      "SELECT id FROM farm_supervisions WHERE cluster_id = $1",
+      [cluster_id]
+   );
+
+   let rows;
+   if (existing.rows.length > 0) {
+      // Update existing
+      const result = await pool.query(
+         `UPDATE farm_supervisions SET
+            officer_id = $2,
+            clearing_status = $3,
+            clearing_notes = $4,
+            clearing_updated_at = CASE WHEN clearing_status != $3 THEN now() ELSE clearing_updated_at END,
+            irrigation_status = $5,
+            irrigation_notes = $6,
+            irrigation_updated_at = CASE WHEN irrigation_status != $5 THEN now() ELSE irrigation_updated_at END,
+            ridging_status = $7,
+            ridging_notes = $8,
+            ridging_updated_at = CASE WHEN ridging_status != $7 THEN now() ELSE ridging_updated_at END,
+            weeding_status = $9,
+            weeding_notes = $10,
+            weeding_updated_at = CASE WHEN weeding_status != $9 THEN now() ELSE weeding_updated_at END,
+            harvesting_status = $11,
+            harvesting_notes = $12,
+            harvesting_updated_at = CASE WHEN harvesting_status != $11 THEN now() ELSE harvesting_updated_at END,
+            updated_at = now()
+         WHERE cluster_id = $1 RETURNING *`,
+         [
+            cluster_id, officer_id,
+            clearing_status, clearing_notes,
+            irrigation_status, irrigation_notes,
+            ridging_status, ridging_notes,
+            weeding_status, weeding_notes,
+            harvesting_status, harvesting_notes
+         ]
+      );
+      rows = result.rows;
+   } else {
+      // Insert new
+      const result = await pool.query(
+         `INSERT INTO farm_supervisions (
+            cluster_id, officer_id, farmer_id, program_id,
+            clearing_status, clearing_notes, clearing_updated_at,
+            irrigation_status, irrigation_notes, irrigation_updated_at,
+            ridging_status, ridging_notes, ridging_updated_at,
+            weeding_status, weeding_notes, weeding_updated_at,
+            harvesting_status, harvesting_notes, harvesting_updated_at,
+            updated_at
+         )
+         VALUES ($1, $2, NULL, NULL, $3, $4, now(), $5, $6, now(), $7, $8, now(), $9, $10, now(), $11, $12, now(), now())
+         RETURNING *`,
+         [
+            cluster_id, officer_id,
+            clearing_status, clearing_notes,
+            irrigation_status, irrigation_notes,
+            ridging_status, ridging_notes,
+            weeding_status, weeding_notes,
+            harvesting_status, harvesting_notes
+         ]
+      );
+      rows = result.rows;
+   }
+
+   return rows[0];
+}
 
 export {
    createWallet, getWalletByOwner, depositLockedFunds, depositToClusterWallet,
@@ -1131,6 +1454,7 @@ export {
    createPlantingActivity, getPlantingByFarmer,
    createFieldVerification, getVerificationsByCluster,
    getFarmSupervisionByFarmer, upsertFarmSupervision,
+   getClusterSupervision, upsertClusterSupervision,
    createHarvestApproval,
    createLogisticsEntry, getLogisticsByCluster,
    createBuyerMatch, getBuyerMatches,
@@ -1146,7 +1470,12 @@ export {
    updateLogisticsStatusDb,
    getWarehouseInventoryStats,
    addWarehouseStock,
-   createEcosystemOrder, getEcosystemOrders, getAllEcosystemOrders, processEscrowPayment, assignOrderDistributor,
-   getEcosystemOrdersByDistributor, markOrderDelivered,
+   removeWarehouseStock,
+   createEcosystemOrder, getEcosystemOrders, getAllEcosystemOrders,
+   getEcosystemOrderForPayment, createEcosystemOrderPayment, markEcosystemOrderPaymentProcessing,
+   getEcosystemOrderPaymentByReference, recordEcosystemPaystackVerification, confirmEcosystemOrderPayment,
+   processEscrowPayment, assignOrderDistributor,
+   getEcosystemOrdersByDistributor, markOrderDelivered, updateEcosystemOrderStatus,
    getDistributorStats
 };
+

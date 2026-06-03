@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS public.buyers (
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT, -- nullable (only used for local login)
     name TEXT,
+    phone TEXT,
+    company_name TEXT,
+    registration_number TEXT,
+    tax_id TEXT,
+    headquarters TEXT,
     avatar_url TEXT,
     auth_provider TEXT NOT NULL DEFAULT 'local', -- 'local', 'google', etc.
     google_id TEXT UNIQUE, -- nullable, filled only for Google users

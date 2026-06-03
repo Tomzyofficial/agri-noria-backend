@@ -29,6 +29,7 @@ import trainingMaterialRoutes from "./routes/trainingMaterial.routes.js";
 import logisticsOperationRoute from "./routes/logisitics/logisticsOperation.route.js";
 import paymentsRoute from "./routes/payments.route.js";
 import ordersRoute from "./routes/buyer/orders.route.js";
+import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
 
 // Market-place routes
 import categoriesRoute from "./routes/farmDevelopment/categories.route.js";
@@ -80,6 +81,7 @@ const app = express()
   .use("/api/vendor/logistics", logisticsOperationRoute)
   .use("/api/buyer", paymentsRoute)
   .use("/api/buyer", ordersRoute)
+  .use("/api/field-operations", fieldOperationsRoute)
   // Market-place routes
   .use("/api/market-place/categories", categoriesRoute)
   .use("/api/market-place/company", companyRoute)

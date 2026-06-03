@@ -1,4 +1,4 @@
-import { createProgram, getAllPrograms, getProgramsByCreator } from "../../db/programs/programs.db.js";
+import { createProgram, getAllPrograms, getProgramById, getProgramsByCreator, updateProgram } from "../../db/programs/programs.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const programsController = {};
