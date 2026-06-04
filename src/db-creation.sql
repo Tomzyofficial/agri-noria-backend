@@ -377,6 +377,8 @@ CREATE TABLE IF NOT EXISTS storage_facility(
    description TEXT NOT NULL,
    status CHARACTER VARYING NOT NULL DEFAULT 'active',
    features TEXT[] NOT NULL,
+   view_count INTEGER NOT NULL DEFAULT 0,
+   booking_click_count INTEGER NOT NULL DEFAULT 0,
    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -426,3 +428,16 @@ CREATE TABLE IF NOT EXISTS loan_payments (
 -- not yet created this
 CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id);
 CREATE INDEX IF NOT EXISTS idx_loan_payments_reference ON loan_payments(paystack_reference); 
+
+
+CREATE TABLE IF NOT quote_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    target_id UUID NOT NULL, 
+    quote_type TEXT,
+    full_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    status TEXT DEFAULT 'pending' -- pending, contacted
+    additional_info TEXT,
+)

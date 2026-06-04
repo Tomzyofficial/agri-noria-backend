@@ -32,7 +32,7 @@ export async function deleteFileFromCloudinary(imageUrl) {
   } catch (error) {
     return {
       success: false,
-      error: "Failed to delete image from cloud. Try again.",
+      error: "Failed to delete image from cloud.",
     };
   }
 }

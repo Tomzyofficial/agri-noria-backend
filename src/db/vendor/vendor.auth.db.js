@@ -3,7 +3,7 @@ import pool from "../../lib/connect.js";
 // Get user by email
 async function getUserByEmail(email) {
   const { rows } = await pool.query(
-    "SELECT id, email, fname, lname, phone, account_type, pword, workspace, role, is_suspended, onboarding_status FROM vendors WHERE email = $1 LIMIT 1",
+    "SELECT id, email, fname, lname, phone, pword, workspace, role, is_suspended, onboarding_status FROM vendors WHERE email = $1 LIMIT 1",
     [email],
   );
   return rows[0];

@@ -1,7 +1,7 @@
 import pool from "../../lib/connect.js";
 
 export async function addVehicle({
-  logistics_company_id,
+  vendor_id,
   title,
   vehicle_type,
   license_plate,
@@ -17,7 +17,7 @@ export async function addVehicle({
   try {
     const queryText = `
       INSERT INTO vehicles (
-        logistics_company_id, title, vehicle_type, license_plate, cargo_type,
+        vendor_id, title, vehicle_type, license_plate, cargo_type,
         max_weight_kg, volume_cubic_meters, base_location, operating_regions,
         pricing_model, rate_amount, images
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -25,7 +25,7 @@ export async function addVehicle({
     `;
 
     const result = await pool.query(queryText, [
-      logistics_company_id,
+      vendor_id,
       title,
       vehicle_type,
       license_plate,
@@ -56,7 +56,6 @@ export async function getVehicles(vendorId) {
       LEFT JOIN country_utils AS cu ON v.vendor_id = cu.vendor_id WHERE v.vendor_id = $1;
     `;
     const result = await pool.query(queryText, [vendorId]);
-    console.log(result.rows);
     return { success: true, vehicles: result.rows };
   } catch (error) {
     return {
@@ -71,33 +70,24 @@ export async function getListedVehicles({
   country_code,
   limit = 100,
   offset = 0,
+  vehicleId = null,
 } = {}) {
   try {
-    const queryText = `
+    const vehicleQuery = `
       SELECT
         veh.id,
-        veh.vendor_id,
         veh.title,
         veh.vehicle_type,
-        veh.cargo_type,
-        veh.max_weight_kg,
-        veh.volume_cubic_meters,
         veh.base_location,
         veh.operating_regions,
         veh.pricing_model,
         veh.rate_amount,
         veh.images,
         veh.status,
-        veh.created_at,
-        v.fname AS logistics_provider_fname,
-        v.lname AS logistics_provider_lname,
-        vd.business_name AS logistics_business_name,
         cu.country_code,
         cu.currency
       FROM vehicles veh
-      LEFT JOIN vendors v ON veh.vendor_id = v.id
-      LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
-      LEFT JOIN country_utils cu ON cu.vendor_id = v.id
+      LEFT JOIN country_utils cu ON cu.vendor_id = veh.vendor_id
       WHERE cu.country_code = $1
       ORDER BY
         CASE COALESCE(veh.status, 'available')
@@ -110,16 +100,25 @@ export async function getListedVehicles({
       LIMIT $2 OFFSET $3;
     `;
 
-    const result = await pool.query(queryText, [country_code, limit, offset]);
+    // Used when fetching details for a specific vehicle on the public marketplace listing page
+    const vehicleByIdQuery = `SELECT veh.id, veh.vendor_id, veh.title, veh.vehicle_type, veh.cargo_type, veh.max_weight_kg, veh.volume_cubic_meters, veh.base_location, veh.operating_regions, veh.pricing_model, veh.rate_amount, veh.images, veh.status, v.fname, v.lname, vd.business_name, cu.currency, cu.country_code FROM vehicles veh LEFT JOIN vendors v ON veh.vendor_id = v.id LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id LEFT JOIN country_utils cu ON cu.vendor_id = veh.vendor_id WHERE veh.id = $1;`;
+
+    const [vehicleResult, vehicleByIdResult] = await Promise.all([
+      pool.query(vehicleQuery, [country_code, limit, offset]),
+      vehicleId
+        ? pool.query(vehicleByIdQuery, [vehicleId])
+        : Promise.resolve({ rows: [] }),
+    ]);
 
     return {
       success: true,
-      vehicles: result.rows,
+      vehicles: vehicleResult.rows,
       pagination: {
         limit,
         offset,
-        count: result.rows.length,
+        count: vehicleResult.rows.length,
       },
+      vehicleDetails: vehicleId ? vehicleByIdResult.rows[0] : null,
     };
   } catch (error) {
     console.error("Error fetching listed vehicles:", error);
@@ -574,5 +573,46 @@ export async function getOrderDataForEmails(orderId) {
       success: false,
       error: error.message || "Failed to fetch order data for emails",
     };
+  }
+}
+
+export async function getQuoteRequests(vendorId) {
+  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, veh.title as vehicle_title, veh.base_location FROM quote_requests qr 
+    INNER JOIN vehicles veh ON veh.id = qr.target_id WHERE veh.vendor_id = $1 ORDER BY qr.created_at DESC LIMIT 5`;
+
+  const allQuoteRequestQuery = `SELECT qr.id AS quote_request_id, qr.target_id, qr.full_name,
+       qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, veh.title AS vehicle_title, veh.base_location
+       FROM quote_requests qr
+       INNER JOIN vehicles veh ON veh.id = qr.target_id
+       WHERE veh.vendor_id = $1
+       ORDER BY qr.created_at DESC`;
+
+  const [quoteRequestsResult, allQuoteRequestsResult] = await Promise.all([
+    pool.query(quoteRequestsQuery, [vendorId]),
+    pool.query(allQuoteRequestQuery, [vendorId]),
+  ]);
+
+  return {
+    success: true,
+    quoteRequests: quoteRequestsResult.rows,
+    allQuoteRequests: allQuoteRequestsResult.rows,
+  };
+}
+
+export async function updateQuoteRequestStatus(
+  quoteRequestId,
+  status,
+  accountId,
+) {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE quote_requests SET status = $1 FROM
+         vehicles veh WHERE veh.id = quote_requests.target_id AND quote_requests.id = $2 AND veh.vendor_id = $3
+         RETURNING *`,
+      [status, quoteRequestId, accountId],
+    );
+    return { success: true, data: rows[0] };
+  } catch (error) {
+    return { success: false, error: "Internal server error. Try again." };
   }
 }

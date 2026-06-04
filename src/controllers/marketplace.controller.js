@@ -32,9 +32,9 @@ marketplaceController.getBoostedCatalog = async (req, res) => {
 // Get all the home page marketplace products
 marketplaceController.getAllMarketProducts = async (req, res) => {
    try {
-      let country;
+      let country = req.query.country;
       const userLocationCookie = req.cookies?.user_location;
-      if (userLocationCookie) {
+      if (!country && userLocationCookie) {
          const locationData = JSON.parse(userLocationCookie);
          country = locationData.country_code;
       }

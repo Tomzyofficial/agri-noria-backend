@@ -3,7 +3,7 @@ import {
   deleteTraining,
   getTrainingsByVendor,
   enrollFarmerInTraining,
-  countEnrolledFarmersByTrainer,
+//   countEnrolledFarmersByTrainer,
   getFarmerEnrollmentsCount,
   isFarmerEnrolled,
   startTraining,
@@ -181,12 +181,12 @@ trainingController.enrollFarmerInTraining = async (req, res) => {
     }
 
     // Verify the vendor is a Farmer (not Training_Partner)
-    if (payload.role !== "farmer") {
-      return res.status(403).json({
-        success: false,
-        error: "Only Farmers can enroll in trainings",
-      });
-    }
+   //  if (payload.role !== "farmer") {
+   //    return res.status(403).json({
+   //      success: false,
+   //      error: "Only Farmers can enroll in trainings",
+   //    });
+   //  }
 
     const { trainingId } = req.params;
 
@@ -264,17 +264,17 @@ trainingController.startTraining = async (req, res) => {
       });
     }
 
-    const status = String(training.status).toUpperCase();
+    const status = training.status
     let updatedTraining = training;
 
-    if (status === "COMPLETED") {
+    if (status === "Completed") {
       return res.status(400).json({
         success: false,
         error: "Training session has already ended",
       });
     }
 
-    if (status !== "LIVE") {
+    if (status !== "Live") {
       const updatedTrainingResult = await startTraining(trainingId, payload.id);
       if (!updatedTrainingResult.success) {
         return res.status(400).json(updatedTrainingResult);
@@ -363,12 +363,12 @@ trainingController.joinTraining = async (req, res) => {
       });
     }
 
-    if (payload.role !== "farmer") {
-      return res.status(403).json({
-        success: false,
-        error: "Only Farmers can join training sessions",
-      });
-    }
+   //  if (payload.role !== "farmer") {
+   //    return res.status(403).json({
+   //      success: false,
+   //      error: "Only Farmers can join training sessions",
+   //    });
+   //  }
 
     const { trainingId } = req.params;
 
@@ -391,14 +391,14 @@ trainingController.joinTraining = async (req, res) => {
     }
 
     const training = trainingResult.data;
-    if (!training || training.status !== "LIVE") {
+    if (!training || training.status !== "Live") {
       return res.status(400).json({
         success: false,
         error: "Training is not currently live",
       });
     }
 
-    const uid = createAgoraUid("farmer", payload.id);
+    const uid = createAgoraUid("trainee", payload.id);
 
     const agoraToken = agoraService.generateRtcToken(
       training.agora_channel_name,
@@ -438,11 +438,11 @@ trainingController.getTrainingsWithStatus = async (req, res) => {
       });
     }
 
-    const trainings = await getTrainingsWithStatus();
+    const trainings = await getTrainingsWithStatus(payload.id);
     return res.status(200).json({
       success: true,
-      data: trainings.data,
-      total: trainings.total,
+      trainingData: trainings.trainingData,
+      enrollmentData: trainings.enrollmentData,
     });
   } catch (error) {
     console.error("Error getting trainings with status:", error);

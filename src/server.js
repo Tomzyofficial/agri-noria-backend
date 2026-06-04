@@ -31,6 +31,14 @@ import paymentsRoute from "./routes/payments.route.js";
 import ordersRoute from "./routes/buyer/orders.route.js";
 import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
 
+// Market-place routes
+import categoriesRoute from "./routes/farmDevelopment/categories.route.js";
+import companyRoute from "./routes/farmDevelopment/company.route.js";
+import analyticsRoute from "./routes/farmDevelopment/analytics.route.js";
+import listingsRoute from "./routes/farmDevelopment/listings.route.js";
+import leadsRoute from "./routes/farmDevelopment/leads.route.js";
+import portfolioRoute from "./routes/farmDevelopment/portfolio.route.js";
+
 const port = process.env.PORT || 8080;
 
 const app = express()
@@ -73,7 +81,14 @@ const app = express()
   .use("/api/vendor/logistics", logisticsOperationRoute)
   .use("/api/buyer", paymentsRoute)
   .use("/api/buyer", ordersRoute)
-  .use("/api/field-operations", fieldOperationsRoute);
+  .use("/api/field-operations", fieldOperationsRoute)
+  // Market-place routes
+  .use("/api/market-place/categories", categoriesRoute)
+  .use("/api/market-place/company", companyRoute)
+  .use("/api/market-place/analytics", analyticsRoute)
+  .use("/api/market-place/listings", listingsRoute)
+  .use("/api/market-place/leads", leadsRoute)
+  .use("/api/market-place/portfolio", portfolioRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on ${port}`);
