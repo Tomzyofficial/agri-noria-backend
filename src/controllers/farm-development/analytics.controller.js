@@ -4,7 +4,7 @@ import {
   getTotalViews,
   getLeadsByStatus,
   getTopListings,
-} from "../../db/farmDevelopment/analytics.db.js";
+} from "../../db/farm-development/analytics.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const analyticsController = {};

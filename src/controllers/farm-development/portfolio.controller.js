@@ -5,7 +5,7 @@ import {
   getPortfolioProjectImages,
   updatePortfolioProject,
   deletePortfolioProject,
-} from "../../db/farmDevelopment/portfolio.db.js";
+} from "../../db/farm-development/portfolio.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const portfolioController = {};

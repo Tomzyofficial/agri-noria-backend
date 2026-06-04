@@ -2,7 +2,7 @@ import {
   getCompany,
   createCompany,
   updateCompany,
-} from "../../db/farmDevelopment/company.db.js";
+} from "../../db/farm-development/company.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const companyController = {};

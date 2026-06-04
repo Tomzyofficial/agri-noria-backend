@@ -1,5 +1,5 @@
 import { Router } from "express";
-import listingsController from "../../controllers/farmDevelopment/listings.controller.js";
+import listingsController from "../../controllers/farm-development/listings.controller.js";
 
 const listingsRouter = Router();
 

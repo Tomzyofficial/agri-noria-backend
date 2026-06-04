@@ -6,7 +6,7 @@ import {
   recordListingView,
   updateListing,
   deleteListing,
-} from "../../db/farmDevelopment/listings.db.js";
+} from "../../db/farm-development/listings.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const listingsController = {};

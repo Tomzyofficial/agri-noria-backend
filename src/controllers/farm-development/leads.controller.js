@@ -5,7 +5,7 @@ import {
   getLeadStatusHistory,
   updateLeadStatus,
   deleteLead,
-} from "../../db/farmDevelopment/leads.db.js";
+} from "../../db/farm-development/leads.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const leadsController = {};

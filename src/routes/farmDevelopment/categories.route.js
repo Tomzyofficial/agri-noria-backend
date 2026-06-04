@@ -1,5 +1,5 @@
 import { Router } from "express";
-import categoriesController from "../../controllers/farmDevelopment/categories.controller.js";
+import categoriesController from "../../controllers/farm-development/categories.controller.js";
 
 const categoriesRouter = Router();
 

@@ -1,4 +1,4 @@
-import { getCategories } from "../../db/farmDevelopment/categories.db.js";
+import { getCategories } from "../../db/farm-development/categories.db.js";
 
 const categoriesController = {};
 
