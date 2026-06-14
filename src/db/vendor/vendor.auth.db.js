@@ -15,7 +15,7 @@ async function createUser(
   lname,
   email,
   phone,
-  //   account_type,
+  //   role,
   pword,
   terms_of_service,
   workspace,

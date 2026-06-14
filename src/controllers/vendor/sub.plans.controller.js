@@ -130,7 +130,7 @@ subPlansController.initialize = async (req, res) => {
          admin: "/dashboard/admin/",
       };
 
-      const targetRoute = accountTypeRoutes[payload.account_type?.toLowerCase()];
+      const targetRoute = accountTypeRoutes[payload.role?.toLowerCase()];
 
       const initResponse = await initializePaystack("/transaction/initialize", {
          body: {

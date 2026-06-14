@@ -30,7 +30,7 @@ const requireSuperAdmin = async (req, res, next) => {
       if (!payload) {
          return res.status(401).json({ success: false, error: "Unauthorized" });
       }
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       if (role !== "super admin" && role !== "admin") {
          return res.status(403).json({ success: false, error: "Forbidden: Super Admin access required" });
       }
@@ -139,7 +139,7 @@ superAdminController.getSystemAnalytics = async (req, res) => {
          totalBalance: stats.total_balance || 0,
          systemHealth: 100,
          roleDistribution: roleCounts.map(r => ({
-            name: r.account_type,
+            name: r.role,
             count: parseInt(r.count)
          })),
          monthlyGrowth: monthlyData.map(row => ({
@@ -259,7 +259,7 @@ const requireFinanceOrAdmin = async (req, res, next) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
       
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       if (!["super admin", "admin", "finance", "institution", "sales-manager"].includes(role)) {
          return res.status(403).json({ success: false, error: "Forbidden: Finance or Admin access required" });
       }

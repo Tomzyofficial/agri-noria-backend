@@ -4,7 +4,7 @@ import { marketplaceDb } from "../../db/marketplace/marketplace.db.js";
 
 export const createMarketplaceListing = async (req, res) => {
    try {
-      const { id: vendorId, account_type: role } = req.user;
+      const { id: vendorId, role: role } = req.user;
 
       // Only aggregators can create listings
       if (role !== "aggregator") {
@@ -64,7 +64,7 @@ export const getMarketplaceListings = async (req, res) => {
 
 export const submitBuyerOffer = async (req, res) => {
    try {
-      const { id: buyerId, account_type: role } = req.user;
+      const { id: buyerId, role: role } = req.user;
 
       if (role !== "buyer") {
          return res.status(403).json({ error: "Only buyers can submit offers" });

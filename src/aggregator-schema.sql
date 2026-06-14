@@ -106,10 +106,10 @@ CREATE TABLE IF NOT EXISTS input_financing_locks (
 -- Add aggregator to owner_type in wallets if not already there (it's a varchar, so no need for check update unless there is one)
 -- But we should ensure aggregator can have a wallet
 INSERT INTO wallets (owner_id, owner_type)
-SELECT id, 'aggregator' FROM vendors WHERE account_type = 'Aggregator'
+SELECT id, 'aggregator' FROM vendors WHERE role = 'Aggregator'
 ON CONFLICT DO NOTHING;
 
 -- Initialize finance wallets for finance users
 INSERT INTO finance_wallets (finance_user_id)
-SELECT id FROM vendors WHERE account_type = 'Finance'
+SELECT id FROM vendors WHERE role = 'Finance'
 ON CONFLICT DO NOTHING;

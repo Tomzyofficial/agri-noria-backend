@@ -400,7 +400,7 @@ async function createDetailedInputRequest(data) {
       hectares = parseFloat(farmer.farm_size_hectares) || 1;
    } else {
       // Aggregator / Cluster Manager — verify vendor exists and is not explicitly rejected
-      const { rows: vendor } = await pool.query("SELECT onboarding_status, account_type FROM vendors WHERE id = $1", [requester_id]);
+      const { rows: vendor } = await pool.query("SELECT onboarding_status, role FROM vendors WHERE id = $1", [requester_id]);
       if (!vendor[0]) {
          throw new Error("Requester account not found");
       }
@@ -830,7 +830,7 @@ async function getPipelineStats() {
    const client = await pool.connect();
    try {
       const [farmers, programs, clusters, pendingInputs, verifications, sales, walletTotal, deployed, repayments, distribution] = await Promise.all([
-         client.query("SELECT COUNT(*) as count FROM vendors WHERE LOWER(account_type) = 'farmer'"),
+         client.query("SELECT COUNT(*) as count FROM vendors WHERE LOWER(role) = 'farmer'"),
          client.query("SELECT COUNT(*) as count FROM programs WHERE status = 'active'"),
          client.query("SELECT COUNT(*) as count FROM clusters WHERE status = 'active'"),
          client.query("SELECT COUNT(*) as count FROM input_requests WHERE status = 'pending'"),
@@ -911,7 +911,7 @@ async function getAllDistributors() {
               vd.business_name, vd.address AS location, vd.business_desc, vd.hot_line_phone_number
        FROM vendors v
        LEFT JOIN vendor_documents vd ON v.id = vd.vendor_id
-       WHERE LOWER(v.account_type) = 'distributor'`
+       WHERE LOWER(v.role) = 'distributor'`
    );
    return rows;
 }

@@ -153,7 +153,7 @@ loanControllerServices.initialize = async (req, res) => {
     logistics: "/marketplace/logistics/",
     admin: "/marketplace/admin/",
   };
-  const targetRoute = accountTypeRoutes[payload.account_type?.toLowerCase()];
+  const targetRoute = accountTypeRoutes[payload.role?.toLowerCase()];
 
   try {
     const metadata = { category: "loan_repayment", loan_id: loanId };

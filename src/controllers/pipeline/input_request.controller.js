@@ -18,7 +18,7 @@ inputRequestController.createRequest = async (req, res) => {
       }
 
       // Determine requester type and ID
-      let requester_type = payload.account_type?.toLowerCase();
+      let requester_type = payload.role?.toLowerCase();
       let requester_id = payload.id;
 
       // Handle specific role normalization

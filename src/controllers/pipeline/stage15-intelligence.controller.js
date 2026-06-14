@@ -4,7 +4,7 @@ import { intelligenceDb } from "../../db/marketplace/marketplace.db.js";
 
 export const recordSystemMetrics = async (req, res) => {
    try {
-      const { id: userId, account_type: role } = req.user;
+      const { id: userId, role: role } = req.user;
 
       if (role !== "super admin") {
          return res.status(403).json({ error: "Only Super Admin can record metrics" });
@@ -49,7 +49,7 @@ export const recordSystemMetrics = async (req, res) => {
 
 export const recordYieldForecast = async (req, res) => {
    try {
-      const { id: userId, account_type: role } = req.user;
+      const { id: userId, role: role } = req.user;
 
       if (role !== "super admin") {
          return res.status(403).json({ error: "Only Super Admin can record forecasts" });
@@ -79,7 +79,7 @@ export const recordYieldForecast = async (req, res) => {
 
 export const recordClimateRisk = async (req, res) => {
    try {
-      const { id: userId, account_type: role } = req.user;
+      const { id: userId, role: role } = req.user;
 
       if (role !== "super admin") {
          return res.status(403).json({ error: "Only Super Admin can record climate risks" });
@@ -109,7 +109,7 @@ export const recordClimateRisk = async (req, res) => {
 
 export const generateInstitutionalReport = async (req, res) => {
    try {
-      const { id: userId, account_type: role } = req.user;
+      const { id: userId, role: role } = req.user;
 
       if (role !== "super admin") {
          return res.status(403).json({ error: "Only Super Admin can generate reports" });

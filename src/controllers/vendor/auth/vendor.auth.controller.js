@@ -97,7 +97,7 @@ vendorAuthController.signin = async (req, res) => {
         fname: vendor.fname,
         lname: vendor.lname,
         workspace: vendor.workspace,
-        role: vendor.role || vendor.account_type,
+        role: vendor.role || vendor.role,
       },
       rememberMe,
     });
@@ -143,7 +143,7 @@ vendorAuthController.register = async (req, res) => {
     lname,
     email,
     phone,
-    // account_type,
+    // role,
     pword,
     terms_of_service,
     country_name,
@@ -170,7 +170,7 @@ vendorAuthController.register = async (req, res) => {
     errors.push("Please enter a valid email address");
   }
   if (!phone) errors.push("Phone number is required");
-  // if (!account_type) errors.push("Account type is required");
+  // if (!role) errors.push("Account type is required");
   if (!pword) errors.push("Password is required");
   else if (pword.length < 8) {
     errors.push("Password must be at least 8 characters long");
@@ -213,7 +213,7 @@ vendorAuthController.register = async (req, res) => {
       lname,
       email,
       phone,
-      // account_type,
+      // role,
       hashedPassword,
       terms_of_service,
       workspace,
@@ -234,7 +234,7 @@ vendorAuthController.register = async (req, res) => {
         email: newVendor.email,
         fname: newVendor.fname,
         lname: newVendor.lname,
-        // account_type: newVendor.account_type,
+        // role: newVendor.role,
         workspace: newVendor.workspace,
         role: newVendor.role,
       },

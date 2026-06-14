@@ -3,7 +3,7 @@ import pool from "../../lib/connect.js";
 // Get all vendors (users) for super admin
 async function getAllUsers() {
    const { rows } = await pool.query(
-      `SELECT id, fname, lname, email, phone, account_type, is_active, is_verified, is_suspended, created_at 
+      `SELECT id, fname, lname, email, phone, role, is_active, is_verified, is_suspended, created_at 
        FROM vendors 
        ORDER BY created_at DESC`,
    );
@@ -13,9 +13,9 @@ async function getAllUsers() {
 // Get user count by role
 async function getUserCountByRole() {
    const { rows } = await pool.query(
-      `SELECT account_type, COUNT(*) as count 
+      `SELECT role, COUNT(*) as count 
        FROM vendors 
-       GROUP BY account_type 
+       GROUP BY role 
        ORDER BY count DESC`,
    );
    return rows;
@@ -200,7 +200,7 @@ async function getAggregatorsWithBuyerStats() {
        FROM vendors v
        LEFT JOIN aggregator_buyers ab ON ab.aggregator_id = v.id
        LEFT JOIN buyer_agreements ba ON ba.aggregator_id = v.id
-       WHERE v.account_type = 'Aggregator'
+       WHERE v.role = 'Aggregator'
        GROUP BY v.id, v.fname, v.lname, v.email, v.phone, v.created_at
        ORDER BY total_buyers DESC`
    );
@@ -268,9 +268,9 @@ async function getAllEntityWallets() {
    try {
       await pool.query(
          `INSERT INTO wallets (owner_id, owner_type, balance, locked_balance, currency)
-          SELECT id, LOWER(account_type), 0.00, 0.00, 'NGN'
+          SELECT id, LOWER(role), 0.00, 0.00, 'NGN'
           FROM vendors
-          WHERE id NOT IN (SELECT DISTINCT owner_id FROM wallets) AND account_type IS NOT NULL`
+          WHERE id NOT IN (SELECT DISTINCT owner_id FROM wallets) AND role IS NOT NULL`
       );
    } catch (err) {
       console.error("Error auto-initializing wallets:", err);

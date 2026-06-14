@@ -14,7 +14,7 @@ institutionAdminController.getAnalytics = async (req, res) => {
       }
 
       // Check if user is an institution or admin
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
       
       if (!allowedRoles.includes(role)) {
@@ -37,7 +37,7 @@ institutionAdminController.getPortfolio = async (req, res) => {
          return res.status(401).json({ success: false, error: "Unauthorized" });
       }
 
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
       
       if (!allowedRoles.includes(role)) {
@@ -62,7 +62,7 @@ institutionAdminController.getImpact = async (req, res) => {
          return res.status(401).json({ success: false, error: "Unauthorized" });
       }
 
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
       
       if (!allowedRoles.includes(role)) {
@@ -105,7 +105,7 @@ institutionAdminController.getTransactions = async (req, res) => {
          return res.status(401).json({ success: false, error: "Unauthorized" });
       }
 
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       // Strictly restrict transactions/approvals to Finance or Super Admin
       const allowedRoles = ["finance", "super admin", "admin"];
       
@@ -125,7 +125,7 @@ institutionAdminController.getTransactions = async (req, res) => {
 institutionAdminController.getPendingRequests = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
-      if (!payload || payload.account_type?.toLowerCase() !== 'finance') {
+      if (!payload || payload.role?.toLowerCase() !== 'finance') {
          return res.status(403).json({ success: false, error: "Finance role required" });
       }
 
@@ -141,7 +141,7 @@ institutionAdminController.getPendingRequests = async (req, res) => {
 institutionAdminController.getDistributors = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
-      if (!payload || payload.account_type?.toLowerCase() !== 'finance') {
+      if (!payload || payload.role?.toLowerCase() !== 'finance') {
          return res.status(403).json({ success: false, error: "Finance role required" });
       }
 
@@ -157,7 +157,7 @@ institutionAdminController.getDistributors = async (req, res) => {
 institutionAdminController.assignDistributor = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
-      if (!payload || payload.account_type?.toLowerCase() !== 'finance') {
+      if (!payload || payload.role?.toLowerCase() !== 'finance') {
          return res.status(403).json({ success: false, error: "Finance role required" });
       }
 
@@ -178,7 +178,7 @@ institutionAdminController.assignDistributor = async (req, res) => {
 institutionAdminController.approveFunds = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
-      if (!payload || payload.account_type?.toLowerCase() !== 'finance') {
+      if (!payload || payload.role?.toLowerCase() !== 'finance') {
          return res.status(403).json({ success: false, error: "Finance role required" });
       }
 

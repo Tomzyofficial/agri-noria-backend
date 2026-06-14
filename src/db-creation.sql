@@ -1,6 +1,6 @@
 -- Account type (changed to character varying)
--- CREATE TYPE account_type AS ENUM ('Farmer', 'Seller', 'Logistics', 'Storage_Facility');
--- ALTER TYPE account_type OWNER TO postgres;
+-- CREATE TYPE role AS ENUM ('Farmer', 'Seller', 'Logistics', 'Storage_Facility');
+-- ALTER TYPE role OWNER TO postgres;
 
 -- Vendor table
 CREATE TABLE IF NOT EXISTS vendors (
@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS vendors (
   verified_at TIMESTAMP WITH TIME ZONE,
   is_suspended BOOLEAN DEFAULT false,
   workspace TEXT,
-  role TEXT
+  role TEXT,
+  total_capacity_mt NUMERIC(10,2) DEFAULT 0
 );
 
 -- Users table (core profile)
@@ -154,7 +155,7 @@ CREATE TABLE IF NOT EXISTS vendor_stats (
 CREATE TABLE IF NOT EXISTS public.listings (
   id UUID PRIMARY KEY default gen_random_uuid(),
   account_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-  account_type character varying NOT NULL,
+  role character varying NOT NULL,
   product_image character varying not null,
   listing_name character varying NOT NULL,
   description character varying NOT NULL,
@@ -432,12 +433,12 @@ CREATE INDEX IF NOT EXISTS idx_loan_payments_reference ON loan_payments(paystack
 
 CREATE TABLE IF NOT quote_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    target_id UUID NOT NULL, 
+    target_id UUID NOT NULL,
     quote_type TEXT,
     full_name TEXT NOT NULL,
     phone TEXT NOT NULL,
     metadata JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    status TEXT DEFAULT 'pending' -- pending, contacted
-    additional_info TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status TEXT DEFAULT 'pending', -- pending, contacted
+    additional_info TEXT
 )

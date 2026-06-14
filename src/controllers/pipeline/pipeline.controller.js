@@ -200,7 +200,7 @@ pipelineController.getClusters = async (req, res) => {
       let clusters = await getAllClusters();
 
       // If the user is an aggregator, only return clusters they created (supervise)
-      if (payload.account_type?.toLowerCase() === 'aggregator') {
+      if (payload.role?.toLowerCase() === 'aggregator') {
          clusters = clusters.filter(c => c.supervisor_id === payload.id);
       }
 
@@ -375,7 +375,7 @@ pipelineController.createInputRequest = async (req, res) => {
          const allClusters = await getAllClusters();
          const cluster = allClusters.find(c => c.id === cluster_id);
          if (!cluster) return res.status(404).json({ success: false, error: "Cluster not found" });
-         const role = payload.account_type?.toLowerCase();
+         const role = payload.role?.toLowerCase();
          if (cluster.supervisor_id !== payload.id && role !== 'super admin' && role !== 'aggregator') {
             return res.status(403).json({ success: false, error: "Only the cluster supervisor or aggregator can make cluster-wide requests" });
          }
@@ -388,7 +388,7 @@ pipelineController.createInputRequest = async (req, res) => {
          cluster_id: targetClusterId,
          total_value: totalValue,
          requester_id: req.body.requester_id || payload.id,
-         requester_type: (payload.account_type?.toLowerCase() === 'aggregator') ? 'aggregator' : (req.body.requester_type || (is_cluster_request ? 'cluster_manager' : 'farmer')),
+         requester_type: (payload.role?.toLowerCase() === 'aggregator') ? 'aggregator' : (req.body.requester_type || (is_cluster_request ? 'cluster_manager' : 'farmer')),
          training_completed: true
       });
       return res.status(201).json({ success: true, data: request });
@@ -436,7 +436,7 @@ pipelineController.getAllInputs = async (req, res) => {
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
       // Only finance and super admin can see all inputs
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       if (role !== 'finance' && role !== 'super admin') {
          return res.status(403).json({ success: false, error: "Access denied" });
       }
@@ -455,7 +455,7 @@ pipelineController.approveFunds = async (req, res) => {
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
       // Strict role check: Only Finance can approve
-      if (payload.account_type?.toLowerCase() !== 'finance' && payload.account_type?.toLowerCase() !== 'super admin') {
+      if (payload.role?.toLowerCase() !== 'finance' && payload.role?.toLowerCase() !== 'super admin') {
          return res.status(403).json({ success: false, error: "Only Finance roles can approve funds" });
       }
 
@@ -576,7 +576,7 @@ pipelineController.approveItems = async (req, res) => {
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
       // Strict role check: Only Finance can approve
-      if (payload.account_type?.toLowerCase() !== 'finance' && payload.account_type?.toLowerCase() !== 'super admin') {
+      if (payload.role?.toLowerCase() !== 'finance' && payload.role?.toLowerCase() !== 'super admin') {
          return res.status(403).json({ success: false, error: "Only Finance roles can approve items" });
       }
 
@@ -594,7 +594,7 @@ pipelineController.getDistributorInputs = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      if (payload.account_type?.toLowerCase() !== 'distributor') {
+      if (payload.role?.toLowerCase() !== 'distributor') {
          return res.status(403).json({ success: false, error: "Access denied. Not a distributor." });
       }
 
@@ -611,7 +611,7 @@ pipelineController.updateInputStatus = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      if (payload.account_type?.toLowerCase() !== 'distributor') {
+      if (payload.role?.toLowerCase() !== 'distributor') {
          return res.status(403).json({ success: false, error: "Access denied. Not a distributor." });
       }
 
@@ -1159,7 +1159,7 @@ pipelineController.confirmEcosystemOrderPayment = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
-      if (payload.account_type?.toLowerCase() !== "finance" && payload.account_type?.toLowerCase() !== "super admin") {
+      if (payload.role?.toLowerCase() !== "finance" && payload.role?.toLowerCase() !== "super admin") {
          return res.status(403).json({ success: false, error: "Only finance can confirm ecosystem order payments" });
       }
 
@@ -1206,7 +1206,7 @@ pipelineController.assignOrderDistributor = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
-      // In production, check if payload.account_type is 'finance' or 'admin'
+      // In production, check if payload.role is 'finance' or 'admin'
 
       const { order_id, distributor_id } = req.body;
       await assignOrderDistributor(order_id, distributor_id);
@@ -1276,7 +1276,7 @@ pipelineController.getDistributorStats = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      if (payload.account_type?.toLowerCase() !== 'distributor') {
+      if (payload.role?.toLowerCase() !== 'distributor') {
          return res.status(403).json({ success: false, error: "Access denied. Not a distributor." });
       }
 
