@@ -83,7 +83,7 @@ productController.addProduct = async (req, res) => {
       const product_img = await saveFileToCloudinary(product_image, "marketplace", "image");
       const productListing = await createListingWithDetails(
          payload.id,
-         payload.account_type,
+         payload.role,
          product_img,
          listing_name,
          description,

@@ -19,7 +19,7 @@ export async function requireVendor(req, res, next) {
          email: payload.email ? String(payload.email) : null,
          fname: payload.fname ? String(payload.fname) : "",
          lname: payload.lname ? String(payload.lname) : "",
-         account_type: payload.account_type ? String(payload.account_type) : "",
+         role: payload.role ? String(payload.role) : "",
       };
       next();
    } catch {

@@ -9,7 +9,7 @@ async function inspectInputRequests() {
       const columns = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'input_requests'");
       console.log("Input Requests Columns:", columns.rows);
       
-      const distributors = await pool.query("SELECT id, fname, lname, email, account_type FROM vendors WHERE account_type ILIKE '%distributor%'");
+      const distributors = await pool.query("SELECT id, fname, lname, email, role FROM vendors WHERE role ILIKE '%distributor%'");
       console.log("Distributors:", distributors.rows);
    } catch (err) {
       console.error(err);

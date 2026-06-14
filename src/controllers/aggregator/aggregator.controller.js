@@ -236,7 +236,7 @@ export const aggregatorController = {
         return res.status(401).json({ success: false, error: "Unauthorized" });
 
       // Only finance and super admin can release escrow
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       if (role !== "finance" && role !== "super admin") {
         return res
           .status(403)
@@ -310,7 +310,7 @@ export const aggregatorController = {
       if (!payload)
         return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       if (role !== "finance" && role !== "super admin") {
         return res
           .status(403)
@@ -334,7 +334,7 @@ export const aggregatorController = {
       if (!payload)
         return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const role = payload.account_type?.toLowerCase();
+      const role = payload.role?.toLowerCase();
       if (role !== "finance" && role !== "super admin") {
         return res
           .status(403)

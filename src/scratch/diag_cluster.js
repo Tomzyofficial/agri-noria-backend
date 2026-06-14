@@ -7,7 +7,7 @@ const clusters = await pool.query("SELECT * FROM clusters ORDER BY created_at DE
 console.log('Cluster:', clusters.rows[0]);
 
 if (clusters.rows.length > 0 && clusters.rows[0].supervisor_id) {
-    const vendor = await pool.query("SELECT id, fname, lname, onboarding_status, account_type FROM vendors WHERE id = $1", [clusters.rows[0].supervisor_id]);
+    const vendor = await pool.query("SELECT id, fname, lname, onboarding_status, role FROM vendors WHERE id = $1", [clusters.rows[0].supervisor_id]);
     console.log('Supervisor vendor:', vendor.rows[0]);
 } else {
     console.log('No cluster or supervisor found');

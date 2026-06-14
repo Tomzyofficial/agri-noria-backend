@@ -52,7 +52,7 @@ CREATE INDEX IF NOT EXISTS idx_input_locks_wallet ON input_financing_locks(walle
 -- 6. Initialize finance wallets for existing finance users
 INSERT INTO finance_wallets (finance_user_id)
 SELECT id FROM vendors 
-WHERE account_type = 'Finance' OR account_type = 'finance'
+WHERE role = 'Finance' OR role = 'finance'
 ON CONFLICT DO NOTHING;
 
 -- 7. Update escrow_payments status values if needed

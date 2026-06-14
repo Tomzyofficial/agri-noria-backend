@@ -4,7 +4,7 @@ import { settlementDb } from "../../db/marketplace/marketplace.db.js";
 
 export const createSalesContract = async (req, res) => {
    try {
-      const { id: vendorId, account_type: role } = req.user;
+      const { id: vendorId, role: role } = req.user;
 
       if (role !== "aggregator") {
          return res.status(403).json({ error: "Only aggregators can create contracts" });
@@ -53,7 +53,7 @@ export const recordSale = async (req, res) => {
 
 export const settleSale = async (req, res) => {
    try {
-      const { id: vendorId, account_type: role } = req.user;
+      const { id: vendorId, role: role } = req.user;
 
       if (role !== "finance" && role !== "super admin") {
          return res.status(403).json({ error: "Only Finance/Super Admin can settle sales" });

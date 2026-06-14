@@ -4,7 +4,7 @@ import { deleteFileFromCloudinary } from "../../lib/cloudinary.img.js";
 // Create listings
 export async function createListingWithDetails(
    account_id,
-   account_type,
+   role,
    product_image,
    listing_name,
    description,
@@ -24,12 +24,12 @@ export async function createListingWithDetails(
 
       // Insert into unified listings table ONLY
       const listingResult = await client.query(
-         `INSERT INTO listings (account_id, account_type, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes) 
+         `INSERT INTO listings (account_id, role, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
        RETURNING id, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes`,
          [
             account_id,
-            account_type,
+            role,
             product_image,
             listing_name,
             description,

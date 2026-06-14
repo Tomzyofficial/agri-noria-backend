@@ -4,7 +4,7 @@ import { repaymentDb } from "../../db/marketplace/marketplace.db.js";
 
 export const createFinancingRepayment = async (req, res) => {
    try {
-      const { id: userId, account_type: role } = req.user;
+      const { id: userId, role: role } = req.user;
 
       if (role !== "finance" && role !== "super admin") {
          return res.status(403).json({ error: "Only Finance can create repayment records" });
@@ -31,7 +31,7 @@ export const createFinancingRepayment = async (req, res) => {
 
 export const recordRepayment = async (req, res) => {
    try {
-      const { id: userId, account_type: role } = req.user;
+      const { id: userId, role: role } = req.user;
 
       if (role !== "finance" && role !== "super admin") {
          return res.status(403).json({ error: "Only Finance can record repayments" });
@@ -59,7 +59,7 @@ export const recordRepayment = async (req, res) => {
 
 export const updateCreditScore = async (req, res) => {
    try {
-      const { id: userId, account_type: role } = req.user;
+      const { id: userId, role: role } = req.user;
 
       if (role !== "super admin") {
          return res.status(403).json({ error: "Only Super Admin can update credit scores" });

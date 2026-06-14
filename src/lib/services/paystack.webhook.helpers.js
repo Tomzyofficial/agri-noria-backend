@@ -383,7 +383,7 @@ async function handleAggregatorEscrow(data) {
 
       // Find all finance users and add to their wallets
       const financeUsersRes = await client.query(
-         "SELECT id FROM vendors WHERE account_type = 'Finance' OR account_type = 'finance' LIMIT 1",
+         "SELECT id FROM vendors WHERE role = 'Finance' OR role = 'finance' LIMIT 1",
       );
 
       if (financeUsersRes.rows.length > 0) {

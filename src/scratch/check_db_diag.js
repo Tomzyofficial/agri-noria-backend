@@ -12,7 +12,7 @@ async function run() {
       console.log('Buyers:', r2.rows[0].count);
       const r3 = await pool.query('SELECT COUNT(*) FROM aggregator_buyers');
       console.log('AggregatorBuyers:', r3.rows[0].count);
-      const r4 = await pool.query('SELECT account_type, COUNT(*) as count FROM vendors GROUP BY account_type');
+      const r4 = await pool.query('SELECT role, COUNT(*) as count FROM vendors GROUP BY role');
       console.log('Role counts:', JSON.stringify(r4.rows));
       const r5 = await pool.query(`SELECT ab.id, ab.buyer_name, ab.aggregator_id, v.fname, v.lname, v.email, v.phone FROM aggregator_buyers ab LEFT JOIN vendors v ON ab.aggregator_id = v.id LIMIT 3`);
       console.log('Sample agg buyers:', JSON.stringify(r5.rows));
