@@ -9,6 +9,11 @@ import {
   verifyVendorToken,
 } from "../../../sessions/vendor.auth.session.js";
 import { countryUtils } from "../../../db/country.utils.db.js";
+// import {
+//   deleteVerificationRecord,
+//   isEmailVerified,
+// } from "../../../db/email-verification.db.js";
+// import emailService from "../../../services/email/email.service.js";
 
 const vendorAuthController = {};
 // Cron job to check if vendor in payload exist in db
@@ -143,11 +148,10 @@ vendorAuthController.register = async (req, res) => {
     lname,
     email,
     phone,
-    // account_type,
     pword,
     terms_of_service,
     country_name,
-    country_code, // Changed from country_Code to match frontend
+    country_code,
     state_code,
     state_name,
     currency,
@@ -204,6 +208,16 @@ vendorAuthController.register = async (req, res) => {
       });
     }
 
+    // Check if email is verified
+    //   const emailVerified = await isEmailVerified(email, "vendor");
+    //   if (!emailVerified) {
+    //      return res.status(400).json({
+    //         success: false,
+    //         error: ["Email must be verified before registration."],
+    //         code: "EMAIL_NOT_VERIFIED",
+    //      });
+    //   }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(pword, SALT_ROUNDS);
 
@@ -213,7 +227,6 @@ vendorAuthController.register = async (req, res) => {
       lname,
       email,
       phone,
-      // account_type,
       hashedPassword,
       terms_of_service,
       workspace,
@@ -234,7 +247,6 @@ vendorAuthController.register = async (req, res) => {
         email: newVendor.email,
         fname: newVendor.fname,
         lname: newVendor.lname,
-        // account_type: newVendor.account_type,
         workspace: newVendor.workspace,
         role: newVendor.role,
       },
@@ -257,6 +269,10 @@ vendorAuthController.register = async (req, res) => {
         error: ["Failed to create country utilities. Try again"],
       });
     }
+
+    //  await emailService.sendWelcomeEmail(email, fname, role);
+
+    //  await deleteVerificationRecord(email, "vendor");
 
     // Return success response without sensitive data
     return res.status(201).json({

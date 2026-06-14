@@ -1,5 +1,5 @@
 import { Router } from "express";
-import portfolioController from "../../controllers/farm-development/portfolio.controller.js";
+import portfolioController from "../../controllers/farmDevelopment/portfolio.controller.js";
 
 const portfolioRouter = Router();
 

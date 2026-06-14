@@ -30,14 +30,10 @@ import logisticsOperationRoute from "./routes/logisitics/logisticsOperation.rout
 import paymentsRoute from "./routes/payments.route.js";
 import ordersRoute from "./routes/buyer/orders.route.js";
 import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
-
-// Market-place routes
-import categoriesRoute from "./routes/farmDevelopment/categories.route.js";
-import companyRoute from "./routes/farmDevelopment/company.route.js";
-import analyticsRoute from "./routes/farmDevelopment/analytics.route.js";
+// import emailRoute from "./routes/email-verification.routes.js";
 import listingsRoute from "./routes/farmDevelopment/listings.route.js";
-import leadsRoute from "./routes/farmDevelopment/leads.route.js";
-import portfolioRoute from "./routes/farmDevelopment/portfolio.route.js";
+import publicFarmDevelopmentRoute from "./routes/farmDevelopment/public.route.js";
+import jobsRoute from "./routes/jobs/jobs.route.js";
 
 const port = process.env.PORT || 8080;
 
@@ -46,7 +42,7 @@ const app = express()
     cors({
       origin: [
         "http://localhost:3000",
-        "https://green-oria-agri-connect-frontend.vercel.app",
+        "https://agri-noria-frontend.vercel.app/",
       ],
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -82,13 +78,11 @@ const app = express()
   .use("/api/buyer", paymentsRoute)
   .use("/api/buyer", ordersRoute)
   .use("/api/field-operations", fieldOperationsRoute)
-  // Market-place routes
-  .use("/api/market-place/categories", categoriesRoute)
-  .use("/api/market-place/company", companyRoute)
-  .use("/api/market-place/analytics", analyticsRoute)
-  .use("/api/market-place/listings", listingsRoute)
-  .use("/api/market-place/leads", leadsRoute)
-  .use("/api/market-place/portfolio", portfolioRoute);
+  //   .use("/api/email-verification", emailRoute)
+  .use("/api/farm-development", listingsRoute)
+  //   .use("/api/market-place/portfolio", portfolioRoute)
+  .use("/api/farm-development/public", publicFarmDevelopmentRoute)
+  .use("/api/vendor/jobs", jobsRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on ${port}`);

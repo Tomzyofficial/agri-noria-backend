@@ -1,21 +1,54 @@
 import { Router } from "express";
-import listingsController from "../../controllers/farm-development/listings.controller.js";
+import listingsController from "../../controllers/farmDevelopment/listings.controller.js";
+import analyticsController from "../../controllers/farmDevelopment/analytics.controller.js";
+import portfolioController from "../../controllers/farmDevelopment/portfolio.controller.js";
+import { upload } from "../../middlewares/upload.js";
 
-const listingsRouter = Router();
+const listingsRoute = Router();
 
-// GET /api/market-place/listings
-listingsRouter.get("/", listingsController.getListings);
+listingsRoute.post(
+  "/create-listing",
+  upload.fields([
+    { name: "featured_image", maxCount: 1 },
+    { name: "gallery_images", maxCount: 10 },
+  ]),
+  listingsController.createListing,
+);
 
-// POST /api/market-place/listings
-listingsRouter.post("/", listingsController.createListing);
+listingsRoute.get("/get-listings", listingsController.getListings);
 
-// GET /api/market-place/listings/:id
-listingsRouter.get("/:id", listingsController.getListingById);
+listingsRoute.get("/analytics", analyticsController.getAnalyticsCount);
+listingsRoute.post(
+  "/create-portfolio",
+  upload.fields([
+    { name: "featured_image", maxCount: 1 },
+    { name: "gallery_images", maxCount: 10 },
+  ]),
+  portfolioController.createPortfolioProject,
+);
+listingsRoute.get("/get-portfolios", portfolioController.getPortfolioProjects);
 
-// PATCH /api/market-place/listings/:id
-listingsRouter.patch("/:id", listingsController.updateListing);
+listingsRoute.get(
+  "/portfolio/:id",
+  portfolioController.getPortfolioProjectById,
+);
 
-// DELETE /api/market-place/listings/:id
-listingsRouter.delete("/:id", listingsController.deleteListing);
+listingsRoute.delete(
+  "/portfolio/delete/:id",
+  portfolioController.deletePortfolioProject,
+);
 
-export default listingsRouter;
+listingsRoute.get("/listing/:id", listingsController.getListingById);
+
+listingsRoute.patch(
+  "/listing/update/:id",
+  upload.fields([
+    { name: "featured_image", maxCount: 1 },
+    { name: "gallery_images", maxCount: 10 },
+  ]),
+  listingsController.updateListing,
+);
+
+listingsRoute.delete("/listing/delete/:id", listingsController.deleteListing);
+
+export default listingsRoute;

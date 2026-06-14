@@ -142,8 +142,8 @@ export async function submitReview(id, rating, feedback, buyerId) {
   }
 }
 
-// Submit storage booking request from marketplace to vendor dashboard
-export async function submitStorageBookingRequest({ data }) {
+// Submit booking request from marketplace to vendor dashboard
+export async function submitBookingRequest({ data }) {
   const { target_id, quote_type, full_name, phone, metadata, additional_info } =
     data;
   const result = await pool.query(

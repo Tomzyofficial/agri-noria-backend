@@ -1,7 +1,7 @@
 import {
   getAllListedStorage,
   getSingleListedStorageById,
-  submitStorageBookingRequest,
+  submitBookingRequest,
   incrementStorageBookingClickCount,
   incrementStorageViewCount,
 } from "../db/market-place/marketplace.storage.db.js";
@@ -121,7 +121,7 @@ marketplaceStorageController.submitBookingRequest = async (req, res) => {
   //   }
 
   try {
-    const booking = await submitStorageBookingRequest({
+    const booking = await submitBookingRequest({
       data: {
         ...bookingData,
         target_id: id,
