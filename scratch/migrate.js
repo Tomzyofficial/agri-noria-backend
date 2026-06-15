@@ -11,6 +11,7 @@ async function migrate() {
         'db-creation.sql',
         'pipeline-schema.sql',
         'aggregator-schema.sql',
+        'db-commodity-operations.sql',
         'stages-12-15-schema.sql',
         'migrate-finance-system.sql',
         'scratch/migration_input_v2.sql',
