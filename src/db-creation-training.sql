@@ -25,10 +25,9 @@ CREATE TABLE IF NOT EXISTS trainings (
 
     status VARCHAR(50) DEFAULT 'UPCOMING',
 
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP,
-    ended_at TIMESTAMP,
-    
+    ended_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS training_materials (

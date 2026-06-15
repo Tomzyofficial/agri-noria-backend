@@ -431,7 +431,7 @@ CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id);
 CREATE INDEX IF NOT EXISTS idx_loan_payments_reference ON loan_payments(paystack_reference); 
 
 
-CREATE TABLE IF NOT quote_requests (
+CREATE TABLE IF NOT EXISTS quote_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     target_id UUID NOT NULL,
     quote_type TEXT,

@@ -10,7 +10,8 @@ import {
   declareHarvest,
   getMyBatches,
   requestStorage,
-  requestLogistics
+  requestLogistics,
+  getProvidersByRole
 } from "../../controllers/vendor/commodity-operations/harvest.controller.js";
 import { requireVendorAuth } from "../../middlewares/vendorAuth.js";
 import {
@@ -23,6 +24,8 @@ import {
 const router = express.Router();
 
 router.use(requireVendorAuth);
+
+router.get("/providers/:role", getProvidersByRole);
 
 // Insurance Routes
 router.get("/insurance/requests", getRiskRequests);
