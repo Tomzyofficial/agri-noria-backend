@@ -23,7 +23,6 @@ export async function createVendorSession(res, { user, rememberMe = false }) {
     id: user.id,
     workspace: user.workspace,
     role: user.role,
-    role: user.role,
     fname: user.fname,
     lname: user.lname,
     email: user.email,
@@ -62,11 +61,7 @@ export async function verifyVendorToken(req) {
       algorithms: ["HS256"],
     });
     
-    // Backward compatibility: map role to role for older controllers
-    if (payload.role && !payload.role) {
-       payload.role = payload.role;
-    }
-    
+    // Backward compatibility code removed
     return payload;
   } catch {
     return null;

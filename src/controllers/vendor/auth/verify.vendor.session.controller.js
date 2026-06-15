@@ -38,7 +38,6 @@ export async function verifyVendor(req, res) {
       email: payload.email,
       workspace: payload.workspace,
       role: payload.role,
-      role: payload.role || payload.role,
       onboarding_status: onboardingStatus,
     });
   } catch (error) {
