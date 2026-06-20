@@ -1,4 +1,19 @@
 import pool from "../../../lib/connect.js";
+
+// Get providers by role
+export const getProvidersByRole = async (req, res) => {
+  const { role } = req.params;
+  try {
+    const providers = await pool.query(
+      "SELECT id, fname, lname, email, phone, workspace, total_capacity_mt FROM vendors WHERE role = $1",
+      [role.toLowerCase()]
+    );
+    res.status(200).json({ success: true, data: providers.rows });
+  } catch (error) {
+    console.error("Error fetching providers:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
 import crypto from "crypto";
 
 // Create a new harvest batch
@@ -117,8 +132,8 @@ export const requestStorage = async (req, res) => {
     
     await pool.query(storageQuery, [ticket_number, batch_id, targetWarehouse, batch.quantity_mt, storage_duration_days || 30, storage_fee || 50000]);
 
-    // 3. Update Batch Status (set to in_transit since it is not stored until accepted!)
-    await pool.query("UPDATE harvest_batches SET status = 'in_transit' WHERE batch_id = $1", [batch_id]);
+    // 3. Update Batch Status (set to storage_reserved until logistics picks it up)
+    await pool.query("UPDATE harvest_batches SET status = 'storage_reserved' WHERE batch_id = $1", [batch_id]);
 
     // 4. Create Insurance Risk Request (dummy policy with 'pending' status)
     // Wait, the insurance dashboard queries for batches without a policy or policies in 'pending'.

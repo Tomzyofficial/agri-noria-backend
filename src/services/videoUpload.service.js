@@ -82,6 +82,34 @@ class VideoUploadService {
    }
 
    // Extract video metadata
+   async uploadDocument(file, options = {}) {
+      try {
+         const defaultOptions = {
+            resource_type: "auto",
+            folder: "agri-connect/documents",
+         };
+
+         const uploadOptions = { ...defaultOptions, ...options };
+
+         return new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+               if (error) {
+                  reject(error);
+               } else {
+                  resolve(result);
+               }
+            });
+
+            const readableStream = Readable.from(file.buffer);
+            readableStream.pipe(uploadStream);
+         });
+      } catch (error) {
+         console.error("Error uploading document:", error);
+         throw new Error("Failed to upload document");
+      }
+   }
+
+   // Extract video metadata
    async getVideoMetadata(publicId) {
       try {
          const result = await cloudinary.api.resource(publicId, {

@@ -79,15 +79,6 @@ vendorAuthController.signin = async (req, res) => {
       });
     }
 
-    if (
-      vendor.onboarding_status !== "completed" &&
-      vendor.workspace === "ecosystem"
-    ) {
-      return res.status(400).json({
-        success: false,
-        error: ["You need to complete your onboarding first"],
-      });
-    }
 
     // Create session (attach cookie to response)
     const token = await createVendorSession(res, {

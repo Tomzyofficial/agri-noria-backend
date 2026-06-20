@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS vendors (
   is_suspended BOOLEAN DEFAULT false,
   workspace TEXT,
   role TEXT,
-  total_capacity_mt NUMERIC(10,2) DEFAULT 0
+  total_capacity_mt NUMERIC(10,2) DEFAULT 0,
+  onboarding_level INTEGER DEFAULT 0
 );
 
 -- Users table (core profile)
@@ -431,7 +432,7 @@ CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id);
 CREATE INDEX IF NOT EXISTS idx_loan_payments_reference ON loan_payments(paystack_reference); 
 
 
-CREATE TABLE IF NOT quote_requests (
+CREATE TABLE IF NOT EXISTS quote_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     target_id UUID NOT NULL,
     quote_type TEXT,

@@ -114,6 +114,49 @@ videoUploadController.uploadThumbnail = async (req, res) => {
    }
 };
 
+// Upload document/image
+videoUploadController.uploadDocument = async (req, res) => {
+   try {
+      // Verify vendor authentication
+      const payload = await verifyVendorToken(req);
+      if (!payload) {
+         return res.status(401).json({
+            success: false,
+            error: "Unauthorized",
+         });
+      }
+
+      if (!req.file) {
+         return res.status(400).json({
+            success: false,
+            error: "No file provided",
+         });
+      }
+
+      const result = await videoUploadService.uploadDocument(req.file, {
+         public_id: `doc_${payload.id}_${Date.now()}`,
+         context: {
+            vendor_id: payload.id,
+            vendor_name: `${payload.fname} ${payload.lname}`,
+         },
+      });
+
+      return res.status(200).json({
+         success: true,
+         data: {
+            publicId: result.public_id,
+            url: result.secure_url,
+         },
+      });
+   } catch (error) {
+      console.error("Error uploading document:", error);
+      return res.status(500).json({
+         success: false,
+         error: error.message || "Failed to upload document",
+      });
+   }
+};
+
 // Get video streaming URLs
 videoUploadController.getStreamingUrls = async (req, res) => {
    try {
