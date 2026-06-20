@@ -31,6 +31,8 @@ import paymentsRoute from "./routes/payments.route.js";
 import ordersRoute from "./routes/buyer/orders.route.js";
 import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
 import commodityOperationsRoute from "./routes/vendor/commodity-operations.routes.js";
+import onboardingRoute from "./routes/vendor/onboarding.routes.js";
+import uploadRoute from "./routes/vendor/upload.routes.js";
 // Market-place routes
 import categoriesRoute from "./routes/farmDevelopment/categories.route.js";
 import companyRoute from "./routes/farmDevelopment/company.route.js";
@@ -83,6 +85,8 @@ const app = express()
   .use("/api/buyer", ordersRoute)
   .use("/api/field-operations", fieldOperationsRoute)
   .use("/api/vendor/commodity-operations", commodityOperationsRoute)
+  .use("/api/vendor/onboarding", onboardingRoute)
+  .use("/api/vendor/upload", uploadRoute)
   // Market-place routes
   .use("/api/market-place/categories", categoriesRoute)
   .use("/api/market-place/company", companyRoute)

@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS trainings (
 );
 
 CREATE TABLE IF NOT EXISTS training_materials (
-   id UUID PRIMARY KEY DEFAULT GEN_RANDOM_UUID,
+   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
    vendor_id UUID NOT NULL,
    title VARCHAR(200) NOT NULL,
    description TEXT,
@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS training_materials (
    file_type VARCHAR(100),
    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-   category TEXT NOT NULL,
-)
+   category TEXT NOT NULL
+);
 
 
 -- Live Sessions
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS training_enrollments (
 
     training_id UUID NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
 
-    trainee_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    farmer_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
 
     attended BOOLEAN DEFAULT FALSE,
 
@@ -125,10 +125,10 @@ CREATE TABLE IF NOT EXISTS training_enrollments (
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_trainings_trainer_id ON trainings(trainer_id);
-CREATE INDEX IF NOT EXISTS idx_trainings_is_active ON trainings(is_active);
+-- CREATE INDEX IF NOT EXISTS idx_trainings_is_active ON trainings(is_active);
 CREATE INDEX IF NOT EXISTS idx_training_material_id ON training_materials(id);
 CREATE INDEX IF NOT EXISTS idx_training_enrollments_training_id ON training_enrollments(training_id);
-CREATE INDEX IF NOT EXISTS idx_training_enrollments_trainee_id ON training_enrollments(trainee_id);
+CREATE INDEX IF NOT EXISTS idx_training_enrollments_farmer_id ON training_enrollments(farmer_id);
 
 -- Insert default training categories
 -- INSERT INTO training_categories (name, description, icon) VALUES

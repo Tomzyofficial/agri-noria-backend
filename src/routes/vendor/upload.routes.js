@@ -10,6 +10,9 @@ uploadRoute.post("/video", upload.single("video"), videoUploadController.uploadV
 // Upload thumbnail image
 uploadRoute.post("/thumbnail", upload.single("thumbnail"), videoUploadController.uploadThumbnail);
 
+// Upload document/image
+uploadRoute.post("/document", upload.single("file"), videoUploadController.uploadDocument);
+
 // Get streaming URLs for a video
 uploadRoute.get("/stream/:publicId", videoUploadController.getStreamingUrls);
 

@@ -19,7 +19,10 @@ async function migrate() {
         'db-creation-email-verification.sql',
         'db-creation-training.sql',
         'scratch/migrate_input_workflow.sql',
-        'db-creation-dashboard.sql'
+        'db-creation-dashboard.sql',
+        'db-farmer-onboarding.sql',
+        'db-farmer-onboarding-v2.sql',
+        'db-vendors-onboarding.sql'
     ];
 
     try {

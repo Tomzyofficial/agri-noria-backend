@@ -1,0 +1,2 @@
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS onboarding_level INTEGER DEFAULT 0;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS onboarding_status VARCHAR(50) DEFAULT 'pending';

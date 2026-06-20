@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS vendors (
   is_suspended BOOLEAN DEFAULT false,
   workspace TEXT,
   role TEXT,
-  total_capacity_mt NUMERIC(10,2) DEFAULT 0
+  total_capacity_mt NUMERIC(10,2) DEFAULT 0,
+  onboarding_level INTEGER DEFAULT 0
 );
 
 -- Users table (core profile)

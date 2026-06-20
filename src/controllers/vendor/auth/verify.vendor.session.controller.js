@@ -39,6 +39,7 @@ export async function verifyVendor(req, res) {
       workspace: payload.workspace,
       role: payload.role,
       onboarding_status: onboardingStatus,
+      onboarding_level: user?.onboarding_level || 0,
     });
   } catch (error) {
     console.error("Verify vendor error:", error);
