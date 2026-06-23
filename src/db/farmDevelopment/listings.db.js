@@ -118,8 +118,8 @@ export async function updateListing(listingId, vendorId, updates) {
     await client.query("BEGIN");
 
     const existingImage = await client.query(
-      "SELECT featured_image, gallery_images FROM farm_dev_service_listings WHERE id = $1 LIMIT 1",
-      [listingId],
+      "SELECT featured_image, gallery_images FROM farm_dev_service_listings WHERE id = $1 AND vendor_id = $2 LIMIT 1",
+      [listingId, vendorId],
     );
 
     const existingGallery = existingImage.rows[0].gallery_images || [];

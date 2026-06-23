@@ -10,7 +10,7 @@ listingsRoute.post(
   "/create-listing",
   upload.fields([
     { name: "featured_image", maxCount: 1 },
-    { name: "gallery_images", maxCount: 10 },
+    { name: "gallery_images", maxCount: 5 },
   ]),
   listingsController.createListing,
 );
@@ -22,7 +22,7 @@ listingsRoute.post(
   "/create-portfolio",
   upload.fields([
     { name: "featured_image", maxCount: 1 },
-    { name: "gallery_images", maxCount: 10 },
+    { name: "gallery_images", maxCount: 5 },
   ]),
   portfolioController.createPortfolioProject,
 );
@@ -44,9 +44,18 @@ listingsRoute.patch(
   "/listing/update/:id",
   upload.fields([
     { name: "featured_image", maxCount: 1 },
-    { name: "gallery_images", maxCount: 10 },
+    { name: "gallery_images", maxCount: 5 },
   ]),
   listingsController.updateListing,
+);
+
+listingsRoute.patch(
+  "/portfolio/update/:id",
+  upload.fields([
+    { name: "featured_image", maxCount: 1 },
+    { name: "gallery_images", maxCount: 5 },
+  ]),
+  portfolioController.updatePortfolioProject,
 );
 
 listingsRoute.delete("/listing/delete/:id", listingsController.deleteListing);

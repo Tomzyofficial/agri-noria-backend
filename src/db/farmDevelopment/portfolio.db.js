@@ -1,5 +1,8 @@
 import pool from "../../lib/connect.js";
-import { deleteFileFromCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 
 export async function getPortfolioProjects(vendorId) {
   try {
@@ -80,70 +83,119 @@ export async function getPortfolioProjectImages(projectId) {
   };
 }
 
-export async function updatePortfolioProject(projectId, updates) {
+export async function updatePortfolioProject(projectId, vendorId, updates) {
+  const client = await pool.connect();
+
   try {
-    const {
-      title,
-      description,
-      clientName,
-      category,
-      completionDate,
-      featured,
-      projectLocation,
-      projectCostRange,
-      clientType,
-      beforeImages,
-      afterImages,
-      metadata,
-    } = updates;
+    await client.query("BEGIN");
 
-    const metadataPatch = {
-      ...(metadata || {}),
-      ...(projectCostRange ? { projectCostRange } : {}),
-      ...(clientType ? { clientType } : {}),
-      ...(beforeImages ? { beforeImages } : {}),
-      ...(afterImages ? { afterImages } : {}),
-    };
+    const existingProject = await client.query(
+      `
+        SELECT featured_image, gallery_images
+        FROM farm_dev_portfolio_projects
+        WHERE id = $1
+        AND vendor_id = $2
+        LIMIT 1
+      `,
+      [projectId, vendorId],
+    );
 
-    const { rows } = await pool.query(
-      `UPDATE farm_dev_portfolio_projects
-       SET title = COALESCE($1, title),
-           description = COALESCE($2, description),
-           client_name = COALESCE($3, client_name),
-           category = COALESCE($4, category),
-           completion_date = COALESCE($5, completion_date),
-           featured = COALESCE($6, featured),
-           project_location = COALESCE($7, project_location),
-           metadata = metadata || COALESCE($8::jsonb, '{}'::jsonb),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9
-       RETURNING *`,
+    if (!existingProject.rows.length) {
+      throw new Error("Portfolio project not found");
+    }
+
+    const current = existingProject.rows[0];
+
+    let featuredImageUrl = null;
+    let galleryImages = null;
+
+    // FEATURED IMAGE
+    if (updates.featured_image) {
+      await deleteFileFromCloudinary(current.featured_image);
+
+      const uploaded = await saveFileToCloudinary(
+        updates.featured_image,
+        "farm_dev_portfolio_featured_images",
+        "image",
+      );
+      featuredImageUrl = uploaded.secure_url;
+    }
+
+    // GALLERY IMAGES
+    if (
+      Array.isArray(updates.gallery_images) &&
+      updates.gallery_images.length > 0
+    ) {
+      const uploadedGallery = await Promise.all(
+        updates.gallery_images.map((file) =>
+          saveFileToCloudinary(
+            file,
+            "farm_dev_portfolio_gallery_images",
+            "image",
+          ),
+        ),
+      );
+
+      galleryImages = [
+        ...(current.gallery_images || []),
+        ...uploadedGallery.map((img) => img.secure_url),
+      ];
+    }
+
+    const { rows } = await client.query(
+      `
+        UPDATE farm_dev_portfolio_projects
+        SET
+          title = COALESCE($1, title),
+          category = COALESCE($2, category),
+          description = COALESCE($3, description),
+          location = COALESCE($4, location),
+          completion_date = COALESCE($5, completion_date),
+          featured_image = COALESCE($6, featured_image),
+          gallery_images = COALESCE($7, gallery_images),
+          budget_range = COALESCE($8, budget_range),
+          client_type = COALESCE($9, client_type),
+          project_duration = COALESCE($10, project_duration),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $11
+        AND vendor_id = $12
+        RETURNING *
+      `,
       [
-        title,
-        description,
-        clientName,
-        category,
-        completionDate,
-        featured,
-        projectLocation,
-        metadataPatch,
+        updates.title,
+        updates.category,
+        updates.description,
+        updates.location,
+        updates.completion_date,
+        featuredImageUrl,
+        galleryImages,
+        updates.budget_range,
+        updates.client_type,
+        updates.project_duration,
         projectId,
+        vendorId,
       ],
     );
-    return rows[0] || null;
+
+    await client.query("COMMIT");
+
+    return rows[0];
   } catch (error) {
-    console.error("Database error in updatePortfolioProject:", error);
-    return null;
+    await client.query("ROLLBACK");
+    console.error("Database error:", error);
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
-export async function deletePortfolioProject(projectId) {
+export async function deletePortfolioProject(projectId, vendorId) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const existingImage = await client.query(
-      "SELECT featured_image, gallery_images FROM farm_dev_portfolio_projects WHERE id = $1 LIMIT 1",
-      [projectId],
+      "SELECT featured_image, gallery_images FROM farm_dev_portfolio_projects WHERE id = $1  AND vendor_id = $2 LIMIT 1",
+      [projectId, vendorId],
     );
 
     if (existingImage.rows.length > 0) {
@@ -156,8 +208,8 @@ export async function deletePortfolioProject(projectId) {
       ]);
     }
     const { rows } = await client.query(
-      "DELETE FROM farm_dev_portfolio_projects WHERE id = $1 RETURNING id",
-      [projectId],
+      "DELETE FROM farm_dev_portfolio_projects WHERE id = $1 AND vendor_id = $2 RETURNING id",
+      [projectId, vendorId],
     );
     await client.query("COMMIT");
     return rows[0] || null;

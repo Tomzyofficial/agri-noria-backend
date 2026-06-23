@@ -1,38 +1,3 @@
--- CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- CREATE TABLE IF NOT EXISTS companies (
---   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
---   user_id UUID REFERENCES vendors(id) ON DELETE CASCADE,
---   name TEXT NOT NULL,
---   slug TEXT UNIQUE,
---   description TEXT DEFAULT '',
---   website TEXT DEFAULT '',
---   phone TEXT DEFAULT '',
---   email TEXT DEFAULT '',
---   address TEXT DEFAULT '',
---   city TEXT DEFAULT '',
---   state TEXT DEFAULT '',
---   zip_code TEXT DEFAULT '',
---   country TEXT DEFAULT '',
---   logo_url TEXT DEFAULT '',
---   cover_image_url TEXT DEFAULT '',
---   year_founded INTEGER,
---   business_registration_number TEXT DEFAULT '',
---   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
---   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
---   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
--- );
-
--- CREATE TABLE IF NOT EXISTS service_categories (
---   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
---   name TEXT NOT NULL UNIQUE,
---   slug TEXT NOT NULL UNIQUE,
---   description TEXT DEFAULT '',
---   icon_name TEXT DEFAULT '',
---   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
---   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
--- );
-
 CREATE TABLE IF NOT EXISTS farm_dev_service_listings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
@@ -78,7 +43,7 @@ CREATE TABLE farm_dev_portfolio_projects (
 
 CREATE TABLE IF NOT EXISTS leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  listing_id UUID REFERENCES service_listings(id) ON DELETE SET NULL,
+  listing_id UUID REFERENCES farm_dev_service_listings(id) ON DELETE SET NULL,
   company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   customer_name TEXT NOT NULL,
   customer_email TEXT NOT NULL,

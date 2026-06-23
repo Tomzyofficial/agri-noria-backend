@@ -1,132 +1,158 @@
 import pool from "../../lib/connect.js";
-import { deleteFileFromCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 
 // Create listings
 export async function createListingWithDetails(
-   account_id,
-   account_type,
-   product_image,
-   listing_name,
-   description,
-   price,
-   location,
-   unit_measure,
-   available_quantity,
-   unit,
-   min_quantity,
-   category,
-   discount,
-   attributes,
+  account_id,
+  account_type,
+  product_image,
+  listing_name,
+  description,
+  price,
+  location,
+  unit_measure,
+  available_quantity,
+  unit,
+  min_quantity,
+  category,
+  discount,
+  attributes,
 ) {
-   const client = await pool.connect();
-   try {
-      await client.query("BEGIN");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-      // Insert into unified listings table ONLY
-      const listingResult = await client.query(
-         `INSERT INTO listings (account_id, account_type, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes) 
+    let product_img = null;
+    if (product_image) {
+      product_img = await saveFileToCloudinary(
+        product_image,
+        "marketplace",
+        "image",
+      );
+    }
+
+    // Insert into unified listings table ONLY
+    const listingResult = await client.query(
+      `INSERT INTO listings (account_id, account_type, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
        RETURNING id, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes`,
-         [
-            account_id,
-            account_type,
-            product_image,
-            listing_name,
-            description,
-            price,
-            location,
-            unit_measure,
-            available_quantity,
-            discount,
-            unit,
-            category,
-            min_quantity,
-            attributes,
-         ],
-      );
+      [
+        account_id,
+        account_type,
+        product_img.secure_url,
+        listing_name,
+        description,
+        price,
+        location,
+        unit_measure,
+        available_quantity,
+        discount,
+        unit,
+        category,
+        min_quantity,
+        attributes,
+      ],
+    );
 
-      await client.query("COMMIT");
-      return { success: true, data: listingResult.rows[0] };
-   } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error creating listing:", error);
-      return { success: false, error: "Failed to create product listing", data: null };
-   } finally {
-      client.release();
-   }
+    await client.query("COMMIT");
+    return { success: true, data: listingResult.rows[0] };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error creating listing:", error);
+    return {
+      success: false,
+      error: "Failed to create product listing",
+      data: null,
+    };
+  } finally {
+    client.release();
+  }
 }
 
 // Fetch all items for a vendor dashboard
 export async function fetchListedItems(account_id) {
-   const result = await pool.query(
-      `SELECT ls.id, ls.account_id, ls.product_image, ls.listing_name, ls.description, ls.price, ls.product_status, cu.country_code, cu.currency FROM listings ls JOIN country_utils cu ON ls.account_id = cu.vendor_id WHERE ls.account_id = $1 ORDER BY ls.id DESC`,
-      [account_id],
-   );
-   return result.rows;
+  const result = await pool.query(
+    `SELECT ls.id, ls.account_id, ls.product_image, ls.listing_name, ls.description, ls.price, ls.product_status, cu.country_code, cu.currency FROM listings ls JOIN country_utils cu ON ls.account_id = cu.vendor_id WHERE ls.account_id = $1 ORDER BY ls.id DESC`,
+    [account_id],
+  );
+  return result.rows;
 }
 
 export const getTotalProducts = async (userId) => {
-   try {
-      const { rows } = await pool.query(
-         "SELECT COUNT(id) AS total FROM listings WHERE product_status = 'active' AND account_id = $1",
-         [userId],
-      );
+  try {
+    const { rows } = await pool.query(
+      "SELECT COUNT(id) AS total FROM listings WHERE product_status = 'active' AND account_id = $1",
+      [userId],
+    );
 
-      return rows[0].total;
-   } catch {
-      return { total: 0 };
-   }
+    return rows[0].total;
+  } catch {
+    return { total: 0 };
+  }
 };
 
 // Fetch single item for item edit/view in dashboard by search param
 export async function filterItemForSearchParams(account_id, productId) {
-   try {
-      const result = await pool.query(
-         `SELECT ls.*, cu.country_code, cu.currency FROM listings ls JOIN country_utils cu ON ls.account_id = cu.vendor_id WHERE ls.account_id = $1 AND ls.id = $2`,
-         [account_id, productId],
-      );
-      return result.rows[0];
-   } catch {
-      return null;
-   }
+  try {
+    const result = await pool.query(
+      `SELECT ls.*, cu.country_code, cu.currency FROM listings ls JOIN country_utils cu ON ls.account_id = cu.vendor_id WHERE ls.account_id = $1 AND ls.id = $2`,
+      [account_id, productId],
+    );
+    return result.rows[0];
+  } catch {
+    return null;
+  }
 }
 
 // Update listing table
 export async function updateListings(
-   id,
-   account_id,
-   product_image,
-   listing_name,
-   description,
-   price,
-   location,
-   unit_measure,
-   available_quantity,
-   unit,
-   min_quantity,
-   category,
-   discount,
-   attributes,
+  id,
+  account_id,
+  product_image,
+  listing_name,
+  description,
+  price,
+  location,
+  unit_measure,
+  available_quantity,
+  unit,
+  min_quantity,
+  category,
+  discount,
+  attributes,
 ) {
-   const client = await pool.connect();
-   try {
-      await client.query("BEGIN");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-      // Get existing listing data first
-      const existingListing = await client.query(
-         "SELECT * FROM listings WHERE id = $1 AND account_id = $2 AND product_status = $3",
-         [id, account_id, "active"],
+    // Get existing listing data first
+    const existingListing = await client.query(
+      "SELECT id, product_image FROM listings WHERE id = $1 AND account_id = $2 AND product_status = $3",
+      [id, account_id, "active"],
+    );
+
+    if (existingListing.rows.length === 0) {
+      return { success: false, error: "Product not found or not authorized" };
+    }
+
+    const current = existingListing.rows[0];
+
+    let newProductImg = null;
+    if (product_image) {
+      await deleteFileFromCloudinary(current.product_image);
+      newProductImg = await saveFileToCloudinary(
+        product_image,
+        "marketplace",
+        "image",
       );
+    }
 
-      if (existingListing.rows.length === 0) {
-         return { success: false, error: "Listing not found or not authorized" };
-      }
-
-      const current = existingListing.rows[0];
-
-      // Update unified listings table with all fields
-      const result = await client.query(
-         `UPDATE listings SET 
+    // Update unified listings table with all fields
+    const result = await client.query(
+      `UPDATE listings SET 
              product_image = COALESCE($1, product_image),
              listing_name = COALESCE($2, listing_name),
              description = COALESCE($3, description),
@@ -144,87 +170,97 @@ export async function updateListings(
           AND account_id = $14 
           AND product_status = $15 
           RETURNING id, product_image, listing_name, description, price, location, unit_measure, available_quantity, unit, min_quantity, category, discount, attributes`,
-         [
-            product_image || current.product_image,
-            listing_name || current.listing_name,
-            description || current.description,
-            price || current.price,
-            location || current.location,
-            unit_measure || current.unit_measure,
-            available_quantity || current.available_quantity,
-            unit || current.unit,
-            min_quantity !== undefined ? min_quantity : current.min_quantity,
-            category || current.category,
-            discount !== undefined ? discount : current.discount,
-            attributes || current.attributes,
-            id,
-            account_id,
-            "active",
-         ],
-      );
+      [
+        newProductImg?.secure_url,
+        listing_name,
+        description,
+        price,
+        location,
+        unit_measure,
+        available_quantity,
+        unit,
+        min_quantity,
+        category,
+        discount,
+        attributes,
+        id,
+        account_id,
+        "active",
+      ],
+    );
 
-      await client.query("COMMIT");
-      return { success: true, data: result.rows[0] };
-   } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error updating listing:", error);
-      return { success: false, error: "Failed to update product listing", data: null };
-   } finally {
-      client.release();
-   }
+    await client.query("COMMIT");
+    return { success: true, data: result.rows[0] };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error updating listing:", error);
+    return {
+      success: false,
+      error: "Failed to update product listing",
+      data: null,
+    };
+  } finally {
+    client.release();
+  }
 }
 
 // Delete product per vendor
 export async function deleteProduct(productId, payload) {
-   const client = await pool.connect();
+  const client = await pool.connect();
 
-   try {
-      await client.query("BEGIN");
+  try {
+    await client.query("BEGIN");
 
-      // Check if product exist and belongs to the vendor
-      const productCheck = await client.query(
-         "SELECT id, product_image FROM listings WHERE id = $1 AND account_id = $2",
-         [productId, payload.id],
-      );
+    // Check if product exist and belongs to the vendor
+    const productCheck = await client.query(
+      "SELECT id, product_image FROM listings WHERE id = $1 AND account_id = $2",
+      [productId, payload.id],
+    );
 
-      if (productCheck.rows.length === 0) {
-         await client.query("ROLLBACK"); // Used to undo all changes made during a current transaction
-         return { error: "Product not found or you don't have permission", success: false };
-      }
-
-      const product = productCheck.rows[0];
-      const imageUrl = product.product_image;
-
-      if (imageUrl && imageUrl.includes("cloudinary.com")) {
-         try {
-            const deleteResult = await deleteFileFromCloudinary(imageUrl);
-            if (deleteResult.result !== "ok") {
-               await client.query("ROLLBACK");
-               return { error: deleteResult.messsage || "Failed to delete product image", success: false };
-            }
-         } catch {
-            await client.query("ROLLBACK");
-            return { error: "Failed to delete product image", success: false };
-         }
-      }
-
-      const deleteProduct = await client.query("DELETE FROM listings WHERE id = $1 AND account_id = $2", [
-         productId,
-         payload.id,
-      ]);
-
-      if (deleteProduct.rowCount === 0) {
-         await client.query("ROLLBACK");
-         return { success: false, error: "Failed to delete product" };
-      }
-
-      await client.query("COMMIT");
-
-      return { success: true };
-   } catch (error) {
+    if (productCheck.rows.length === 0) {
       await client.query("ROLLBACK");
-      return { error: error, success: false };
-   } finally {
-      client.release();
-   }
+      return {
+        error: "Product not found or not authorized",
+        success: false,
+      };
+    }
+
+    const product = productCheck.rows[0];
+    const imageUrl = product.product_image;
+
+    if (imageUrl && imageUrl.includes("cloudinary.com")) {
+      try {
+        const deleteResult = await deleteFileFromCloudinary(imageUrl);
+        if (deleteResult.result !== "ok") {
+          await client.query("ROLLBACK");
+          return {
+            error: deleteResult.messsage || "Failed to delete product image",
+            success: false,
+          };
+        }
+      } catch {
+        await client.query("ROLLBACK");
+        return { error: "Failed to delete product image", success: false };
+      }
+    }
+
+    const deleteProduct = await client.query(
+      "DELETE FROM listings WHERE id = $1 AND account_id = $2",
+      [productId, payload.id],
+    );
+
+    if (deleteProduct.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Failed to delete product" };
+    }
+
+    await client.query("COMMIT");
+
+    return { success: true };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    return { error: error, success: false };
+  } finally {
+    client.release();
+  }
 }

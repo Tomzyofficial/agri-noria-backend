@@ -3,7 +3,6 @@ import {
   deleteTraining,
   getTrainingsByVendor,
   enrollFarmerInTraining,
-//   countEnrolledFarmersByTrainer,
   getFarmerEnrollmentsCount,
   isFarmerEnrolled,
   startTraining,
@@ -60,23 +59,23 @@ trainingController.createTraining = async (req, res) => {
     }
 
     // const thumbnailSaveToCloud = await saveImageToCloudinary(thumbnail.name, "training_thumbnails");
-    const thumbnailSaveToCloud = await saveFileToCloudinary(
-      thumbnail,
-      "training_thumbnails",
-      "image",
-    );
-    if (!thumbnailSaveToCloud) {
-      return res.status(500).json({
-        success: false,
-        error: "Failed to upload thumbnail",
-      });
-    }
+    //  const thumbnailSaveToCloud = await saveFileToCloudinary(
+    //    thumbnail,
+    //    "training_thumbnails",
+    //    "image",
+    //  );
+    //  if (!thumbnailSaveToCloud) {
+    //    return res.status(500).json({
+    //      success: false,
+    //      error: "Failed to upload thumbnail",
+    //    });
+    //  }
 
     const training = await createTraining(
       payload.id,
       title,
       description,
-      thumbnailSaveToCloud.secure_url,
+      thumbnail,
       channelName,
       scheduledAt,
       durationMinutes,
@@ -181,12 +180,12 @@ trainingController.enrollFarmerInTraining = async (req, res) => {
     }
 
     // Verify the vendor is a Farmer (not Training_Partner)
-   //  if (payload.role !== "farmer") {
-   //    return res.status(403).json({
-   //      success: false,
-   //      error: "Only Farmers can enroll in trainings",
-   //    });
-   //  }
+    //  if (payload.role !== "farmer") {
+    //    return res.status(403).json({
+    //      success: false,
+    //      error: "Only Farmers can enroll in trainings",
+    //    });
+    //  }
 
     const { trainingId } = req.params;
 
@@ -264,7 +263,7 @@ trainingController.startTraining = async (req, res) => {
       });
     }
 
-    const status = training.status
+    const status = training.status;
     let updatedTraining = training;
 
     if (status === "Completed") {
@@ -363,12 +362,12 @@ trainingController.joinTraining = async (req, res) => {
       });
     }
 
-   //  if (payload.role !== "farmer") {
-   //    return res.status(403).json({
-   //      success: false,
-   //      error: "Only Farmers can join training sessions",
-   //    });
-   //  }
+    //  if (payload.role !== "farmer") {
+    //    return res.status(403).json({
+    //      success: false,
+    //      error: "Only Farmers can join training sessions",
+    //    });
+    //  }
 
     const { trainingId } = req.params;
 

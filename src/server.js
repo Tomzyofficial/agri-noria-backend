@@ -14,7 +14,7 @@ import profileRoute from "./routes/vendor/profile.route.js";
 import checkoutRoute from "./routes/buyer/checkout.route.js";
 import subPlansRoute from "./routes/vendor/sub.plans.route.js";
 import storageRoute from "./routes/vendor/storage.facility.route.js";
-import webhookRoute from "./routes/vendor/paystack.webhook.route.js";
+import webhookRoute from "./routes/webhooks/paystack.webhook.route.js";
 import loanRoute from "./routes/vendor/loan.route.services.js";
 import adminRoute from "./routes//admin.loan.route.js";
 import trainingRoute from "./routes/vendor/training.route.js";
@@ -34,6 +34,7 @@ import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
 import listingsRoute from "./routes/farmDevelopment/listings.route.js";
 import publicFarmDevelopmentRoute from "./routes/farmDevelopment/public.route.js";
 import jobsRoute from "./routes/jobs/jobs.route.js";
+import publicJobRoute from "./routes/jobs/publicJobs..route.js";
 
 const port = process.env.PORT || 8080;
 
@@ -82,7 +83,8 @@ const app = express()
   .use("/api/farm-development", listingsRoute)
   //   .use("/api/market-place/portfolio", portfolioRoute)
   .use("/api/farm-development/public", publicFarmDevelopmentRoute)
-  .use("/api/vendor/jobs", jobsRoute);
+  .use("/api/vendor/jobs", jobsRoute)
+  .use("/", publicJobRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on ${port}`);

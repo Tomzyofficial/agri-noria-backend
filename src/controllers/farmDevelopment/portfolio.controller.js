@@ -159,6 +159,7 @@ portfolioController.getPortfolioProjectById = async (req, res) => {
 portfolioController.updatePortfolioProject = async (req, res) => {
   try {
     const payload = await verifyVendorToken(req);
+
     if (!payload) {
       return res.status(401).json({
         success: false,
@@ -166,12 +167,20 @@ portfolioController.updatePortfolioProject = async (req, res) => {
       });
     }
 
-    const project = await updatePortfolioProject(req.params.id, req.body);
+    const featured_image = req.files?.featured_image?.[0] ?? null;
+
+    const gallery_images = req.files?.gallery_images ?? [];
+
+    const project = await updatePortfolioProject(req.params.id, payload.id, {
+      ...req.body,
+      featured_image,
+      gallery_images,
+    });
 
     if (!project) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
-        error: "Portfolio project not found",
+        error: "Failed to update portfolio",
       });
     }
 
@@ -180,10 +189,11 @@ portfolioController.updatePortfolioProject = async (req, res) => {
       data: project,
     });
   } catch (error) {
-    console.error("Error in updatePortfolioProject controller:", error);
+    console.error("Error in updatePortfolioProject:", error);
+
     return res.status(500).json({
       success: false,
-      error: "Failed to update portfolio project",
+      error: error.message || "Failed to update portfolio project",
     });
   }
 };
@@ -198,7 +208,7 @@ portfolioController.deletePortfolioProject = async (req, res) => {
       });
     }
 
-    const result = await deletePortfolioProject(req.params.id);
+    const result = await deletePortfolioProject(req.params.id, payload.id);
 
     if (!result) {
       return res.status(404).json({
