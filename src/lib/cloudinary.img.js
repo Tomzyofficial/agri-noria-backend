@@ -50,13 +50,13 @@ export async function deleteFileFromCloudinary(imageUrl) {
 //       }
 //    }
 
-export async function saveFileToCloudinary(file, folder, resourceType) {
+async function uploadSingleFile(file, folder, resourceType) {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder,
         resource_type: resourceType,
-        format: resourceType === "raw" ? "pdf" : undefined, // Force PDF format for raw uploads
+        format: resourceType === "raw" ? "pdf" : undefined,
       },
       (error, result) => {
         if (error) {
@@ -70,4 +70,18 @@ export async function saveFileToCloudinary(file, folder, resourceType) {
     const readableStream = Readable.from(file.buffer);
     readableStream.pipe(uploadStream);
   });
+}
+
+export async function saveFileToCloudinary(fileOrFiles, folder, resourceType) {
+  if (!fileOrFiles) {
+    return null;
+  }
+
+  if (Array.isArray(fileOrFiles)) {
+    return Promise.all(
+      fileOrFiles.map((file) => uploadSingleFile(file, folder, resourceType)),
+    );
+  }
+
+  return uploadSingleFile(fileOrFiles, folder, resourceType);
 }

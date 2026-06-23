@@ -1,5 +1,8 @@
 import pool from "../../lib/connect.js";
-import { deleteFileFromCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 
 // Training partner schedules a training session
 export async function createTraining(
@@ -12,8 +15,17 @@ export async function createTraining(
   durationMinutes,
   maxParticipants,
 ) {
+  const client = await pool.query("BEGIN");
+
   try {
-    const result = await pool.query(
+    if (thumbnail) {
+      thumbnail = await saveFileToCloudinary(
+        thumbnail,
+        "training_thumbnails",
+        "image",
+      );
+    }
+    const result = await client.query(
       ` INSERT INTO trainings (trainer_id, title, description, thumbnail, agora_channel_name,
          scheduled_at, duration_minutes, max_participants) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         RETURNING *`,
@@ -21,20 +33,24 @@ export async function createTraining(
         trainerId,
         title,
         description,
-        thumbnail,
+        thumbnail.secure_url,
         agoraChannelName,
         scheduledAt,
         durationMinutes,
         maxParticipants,
       ],
     );
+    await client.query("COMMIT");
     return { success: true, data: result.rows[0] };
   } catch (error) {
     console.error("error occurred while creating trainings", error);
+    await client.query("ROLLBACK");
     return {
       success: false,
       error: "Failed to create training. Please try again.",
     };
+  } finally {
+    client.release();
   }
 }
 

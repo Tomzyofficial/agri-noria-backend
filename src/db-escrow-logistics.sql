@@ -90,8 +90,8 @@ END$$;
 CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
-    buyer_id UUID NOT NULL REFERENCES buyers(buyer_id) ON DELETE CASCADE,
-    seller_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    buyer_id UUID NOT NULL REFERENCES buyers(buyer_id) ON DELETE SET NULL,
+    seller_id UUID NOT NULL REFERENCES vendors(id) ON DELETE SET NULL,
     
     total_amount NUMERIC(12,2) NOT NULL CHECK (total_amount >= 0),
     currency VARCHAR(10) DEFAULT 'NGN',

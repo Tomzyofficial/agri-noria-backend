@@ -139,6 +139,13 @@ export async function getLogisticsProvidersNearBuyer(address) {
     SELECT 1 FROM unnest(string_to_array(lower($1), ' ')) AS keyword WHERE lower(veh.base_location) LIKE '%' || keyword || '%' OR EXISTS (SELECT 1 FROM unnest(veh.operating_regions) AS region WHERE lower(region) LIKE '%' || keyword || '%')) ORDER BY veh.id;`;
     const result = await pool.query(queryText, [searchTerm]);
 
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: "No available logistics covering your delivery address route",
+      };
+    }
+
     return {
       success: true,
       providers: result.rows,
@@ -275,7 +282,9 @@ export async function findAlternativeVehicle(
   excludeVehicleId,
 ) {
   const searchTerm = deliveryAddress?.trim();
-  if (!searchTerm) return null;
+  if (!searchTerm) {
+    return null;
+  }
 
   const query = `
     SELECT id, vendor_id, title, vehicle_type, rate_amount, base_location, pricing_model
@@ -299,6 +308,7 @@ export async function findAlternativeVehicle(
     excludeVendorId,
     excludeVehicleId,
   ]);
+
   return result.rows[0] || null;
 }
 
@@ -307,13 +317,8 @@ export async function updateOrderForLogistics(
   { status, metadata, delivery_fee },
 ) {
   const query = `
-    UPDATE orders
-    SET
-      status = COALESCE($1, status),
-      metadata = COALESCE($2::jsonb, metadata),
-      delivery_fee = COALESCE($3, delivery_fee),
-      updated_at = NOW()
-    WHERE id = $4
+    UPDATE orders SET status = COALESCE($1, status), metadata = COALESCE($2::jsonb, metadata),
+   delivery_fee = COALESCE($3, delivery_fee), updated_at = NOW() WHERE id = $4
     RETURNING *
   `;
   const result = await pool.query(query, [

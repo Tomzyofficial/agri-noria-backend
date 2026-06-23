@@ -14,7 +14,7 @@ import profileRoute from "./routes/vendor/profile.route.js";
 import checkoutRoute from "./routes/buyer/checkout.route.js";
 import subPlansRoute from "./routes/vendor/sub.plans.route.js";
 import storageRoute from "./routes/vendor/storage.facility.route.js";
-import webhookRoute from "./routes/vendor/paystack.webhook.route.js";
+import webhookRoute from "./routes/webhooks/paystack.webhook.route.js";
 import loanRoute from "./routes/vendor/loan.route.services.js";
 import adminRoute from "./routes//admin.loan.route.js";
 import trainingRoute from "./routes/vendor/training.route.js";
@@ -32,14 +32,11 @@ import ordersRoute from "./routes/buyer/orders.route.js";
 import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
 import commodityOperationsRoute from "./routes/vendor/commodity-operations.routes.js";
 import onboardingRoute from "./routes/vendor/onboarding.routes.js";
-import uploadRoute from "./routes/vendor/upload.routes.js";
-// Market-place routes
-import categoriesRoute from "./routes/farmDevelopment/categories.route.js";
-import companyRoute from "./routes/farmDevelopment/company.route.js";
-import analyticsRoute from "./routes/farmDevelopment/analytics.route.js";
+import uploadRoute from "./routes/vendor/upload.routes.js"; // import emailRoute from "./routes/email-verification.routes.js";
 import listingsRoute from "./routes/farmDevelopment/listings.route.js";
-import leadsRoute from "./routes/farmDevelopment/leads.route.js";
-import portfolioRoute from "./routes/farmDevelopment/portfolio.route.js";
+import publicFarmDevelopmentRoute from "./routes/farmDevelopment/public.route.js";
+import jobsRoute from "./routes/jobs/jobs.route.js";
+import publicJobRoute from "./routes/jobs/publicJobs..route.js";
 
 const port = process.env.PORT || 8080;
 
@@ -48,7 +45,7 @@ const app = express()
     cors({
       origin: [
         "http://localhost:3000",
-        "https://green-oria-agri-connect-frontend.vercel.app",
+        "https://agri-noria-frontend.vercel.app/",
       ],
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -87,13 +84,12 @@ const app = express()
   .use("/api/vendor/commodity-operations", commodityOperationsRoute)
   .use("/api/vendor/onboarding", onboardingRoute)
   .use("/api/vendor/upload", uploadRoute)
-  // Market-place routes
-  .use("/api/market-place/categories", categoriesRoute)
-  .use("/api/market-place/company", companyRoute)
-  .use("/api/market-place/analytics", analyticsRoute)
-  .use("/api/market-place/listings", listingsRoute)
-  .use("/api/market-place/leads", leadsRoute)
-  .use("/api/market-place/portfolio", portfolioRoute);
+  //   .use("/api/email-verification", emailRoute)
+  .use("/api/farm-development", listingsRoute)
+  //   .use("/api/market-place/portfolio", portfolioRoute)
+  .use("/api/farm-development/public", publicFarmDevelopmentRoute)
+  .use("/api/vendor/jobs", jobsRoute)
+  .use("/", publicJobRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on ${port}`);
