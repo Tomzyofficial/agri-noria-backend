@@ -113,10 +113,10 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 -- Indexes for orders
-CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON orders(buyer_id);
-CREATE INDEX IF NOT EXISTS idx_orders_seller_id ON orders(seller_id);
-CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+-- CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON orders(buyer_id);
+-- CREATE INDEX IF NOT EXISTS idx_orders_seller_id ON orders(seller_id);
+-- CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+-- CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 
 -- Trigger for updated_at
 DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
@@ -187,11 +187,11 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 
 -- Indexes for payments
-CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
-CREATE INDEX IF NOT EXISTS idx_payments_payer_id ON payments(payer_id);
-CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
-CREATE INDEX IF NOT EXISTS idx_payments_escrow_status ON payments(escrow_status);
-CREATE INDEX IF NOT EXISTS idx_payments_provider_reference ON payments(provider_reference);
+-- CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
+-- CREATE INDEX IF NOT EXISTS idx_payments_payer_id ON payments(payer_id);
+-- CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+-- CREATE INDEX IF NOT EXISTS idx_payments_escrow_status ON payments(escrow_status);
+-- CREATE INDEX IF NOT EXISTS idx_payments_provider_reference ON payments(provider_reference);
 
 -- Trigger for updated_at
 DROP TRIGGER IF EXISTS update_payments_updated_at ON payments;
@@ -263,14 +263,14 @@ CREATE TABLE IF NOT EXISTS logistics_shipments (
 );
 
 -- Indexes for logistics_shipments
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_order_id ON logistics_shipments(order_id);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_company_id ON logistics_shipments(logistics_company_id);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_vehicle_id ON logistics_shipments(vehicle_id);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_driver_id ON logistics_shipments(driver_id);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_status ON logistics_shipments(status);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_tracking_number ON logistics_shipments(tracking_number);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_delivery_otp ON logistics_shipments(delivery_otp);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_shipment_started_at ON logistics_shipments(shipment_started_at);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_order_id ON logistics_shipments(order_id);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_company_id ON logistics_shipments(logistics_company_id);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_vehicle_id ON logistics_shipments(vehicle_id);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_driver_id ON logistics_shipments(driver_id);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_status ON logistics_shipments(status);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_tracking_number ON logistics_shipments(tracking_number);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_delivery_otp ON logistics_shipments(delivery_otp);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_shipment_started_at ON logistics_shipments(shipment_started_at);
 
 -- Trigger for updated_at
 DROP TRIGGER IF EXISTS update_logistics_shipments_updated_at ON logistics_shipments;
@@ -311,10 +311,10 @@ CREATE TABLE IF NOT EXISTS delivery_confirmations (
 );
 
 -- Indexes for delivery_confirmations
-CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_order_id ON delivery_confirmations(order_id);
-CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_shipment_id ON delivery_confirmations(shipment_id);
-CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_buyer_id ON delivery_confirmations(buyer_id);
-CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_otp_code ON delivery_confirmations(otp_code);
+-- CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_order_id ON delivery_confirmations(order_id);
+-- CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_shipment_id ON delivery_confirmations(shipment_id);
+-- CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_buyer_id ON delivery_confirmations(buyer_id);
+-- CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_otp_code ON delivery_confirmations(otp_code);
 
 -- ============================================
 -- ESCROW RELEASES TABLE (Audit trail for releases)
@@ -343,10 +343,10 @@ CREATE TABLE IF NOT EXISTS escrow_releases (
 );
 
 -- Indexes for escrow_releases
-CREATE INDEX IF NOT EXISTS idx_escrow_releases_payment_id ON escrow_releases(payment_id);
-CREATE INDEX IF NOT EXISTS idx_escrow_releases_order_id ON escrow_releases(order_id);
-CREATE INDEX IF NOT EXISTS idx_escrow_releases_status ON escrow_releases(status);
-CREATE INDEX IF NOT EXISTS idx_escrow_releases_trigger_type ON escrow_releases(trigger_type);
+-- CREATE INDEX IF NOT EXISTS idx_escrow_releases_payment_id ON escrow_releases(payment_id);
+-- CREATE INDEX IF NOT EXISTS idx_escrow_releases_order_id ON escrow_releases(order_id);
+-- CREATE INDEX IF NOT EXISTS idx_escrow_releases_status ON escrow_releases(status);
+-- CREATE INDEX IF NOT EXISTS idx_escrow_releases_trigger_type ON escrow_releases(trigger_type);
 
 -- ============================================
 -- DRIVERS TABLE (For logistics companies)
@@ -401,8 +401,8 @@ CREATE TABLE IF NOT EXISTS shipment_tracking_events (
 );
 
 -- Indexes for shipment_tracking_events
-CREATE INDEX IF NOT EXISTS idx_shipment_tracking_events_shipment_id ON shipment_tracking_events(shipment_id);
-CREATE INDEX IF NOT EXISTS idx_shipment_tracking_events_created_at ON shipment_tracking_events(created_at DESC);
+-- CREATE INDEX IF NOT EXISTS idx_shipment_tracking_events_shipment_id ON shipment_tracking_events(shipment_id);
+-- CREATE INDEX IF NOT EXISTS idx_shipment_tracking_events_created_at ON shipment_tracking_events(created_at DESC);
 
 -- ============================================
 -- FUNCTIONS FOR ESCROW LOGIC
@@ -614,11 +614,11 @@ BEGIN
     
     -- Create indexes for new columns
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_logistics_shipments_delivery_otp') THEN
-        CREATE INDEX idx_logistics_shipments_delivery_otp ON logistics_shipments(delivery_otp);
+        -- CREATE INDEX idx_logistics_shipments_delivery_otp ON logistics_shipments(delivery_otp);
     END IF;
     
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_logistics_shipments_shipment_started_at') THEN
-        CREATE INDEX idx_logistics_shipments_shipment_started_at ON logistics_shipments(shipment_started_at);
+        -- CREATE INDEX idx_logistics_shipments_shipment_started_at ON logistics_shipments(shipment_started_at);
     END IF;
     
     RAISE NOTICE 'Migration completed: Added new columns to logistics_shipments table';
