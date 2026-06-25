@@ -22,7 +22,14 @@ async function migrate() {
         'db-creation-dashboard.sql',
         'db-farmer-onboarding.sql',
         'db-farmer-onboarding-v2.sql',
-        'db-vendors-onboarding.sql'
+        'db-vendors-onboarding.sql',
+        'db-escrow-logistics.sql',
+        'db.logistics.sql',
+        'db-creation-warehouse.sql',
+        'service-providers-schema.sql',
+        'migrations/add-order-status-declined.sql',
+        'migrations/add-workspace-role-to-vendors.sql',
+        'db-preharvest-contracts.sql'
     ];
 
     try {

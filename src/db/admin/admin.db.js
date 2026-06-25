@@ -108,12 +108,13 @@ async function getAllWalletTransactions(limit = 100) {
 
 // Get dashboard statistics
 async function getDashboardStats() {
-   const [vendorCount, buyerCount, agreementCount, escrowTotal, totalBalance] = await Promise.all([
+   const [vendorCount, buyerCount, agreementCount, escrowTotal, totalBalance, financeTotal] = await Promise.all([
       pool.query("SELECT COUNT(*) as count FROM vendors"),
       pool.query("SELECT COUNT(*) as count FROM buyers"),
       pool.query("SELECT COUNT(*) as count FROM buyer_agreements"),
       pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM escrow_payments WHERE status = 'held'"),
       pool.query("SELECT COALESCE(SUM(balance), 0) as total FROM wallets"),
+      pool.query("SELECT COALESCE(SUM(balance), 0) as total FROM finance_wallets")
    ]);
 
    return {
@@ -122,6 +123,7 @@ async function getDashboardStats() {
       total_agreements: parseInt(agreementCount.rows[0]?.count || 0),
       escrow_held: parseFloat(escrowTotal.rows[0]?.total || 0),
       total_balance: parseFloat(totalBalance.rows[0]?.total || 0),
+      finance_wallet_balance: parseFloat(financeTotal.rows[0]?.total || 0),
    };
 }
 
@@ -214,13 +216,21 @@ async function disburseFundsFromFinance(financeUserId, targetWalletId, amount, d
       await client.query("BEGIN");
 
       // Get the finance wallet
-      const fwRes = await client.query(
+      let fwRes = await client.query(
          "SELECT * FROM finance_wallets WHERE finance_user_id = $1",
          [financeUserId]
       );
 
       if (fwRes.rows.length === 0) {
-         throw new Error("Finance wallet not found for user");
+         // Auto-create with initial 5 Billion testing capital
+         await client.query(
+            "INSERT INTO finance_wallets (finance_user_id, balance, currency, status) VALUES ($1, $2, 'NGN', 'active')",
+            [financeUserId, 5000000000]
+         );
+         fwRes = await client.query(
+            "SELECT * FROM finance_wallets WHERE finance_user_id = $1",
+            [financeUserId]
+         );
       }
 
       const financeWalletId = fwRes.rows[0].id;
@@ -342,7 +352,7 @@ async function getInstitutionAnalytics() {
       pool.query(`
          SELECT 
             (SELECT COUNT(*) FROM programs) as active_programs,
-            (SELECT COUNT(*) FROM farmer_profiles) as total_farmers,
+            (SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem') as total_farmers,
             (SELECT COALESCE(SUM(target_hectares), 0) FROM programs) as total_hectares
       `),
       pool.query(`
@@ -416,7 +426,7 @@ async function getInstitutionPortfolio() {
          FROM repayments
       `),
       pool.query(`
-         SELECT COUNT(id) as total_farmers FROM farmer_profiles
+         SELECT COUNT(*) as total_farmers FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem'
       `)
    ]);
 

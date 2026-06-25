@@ -105,12 +105,12 @@ superAdminController.toggleSuspension = async (req, res) => {
 superAdminController.getDashboardStats = async (req, res) => {
    try {
       const stats = await getDashboardStats();
-      // Ensure compatibility by providing both names
+      // Provide both names, but prioritize actual finance_wallet_balance over legacy total_balance
       return res.status(200).json({ 
          success: true, 
          data: {
             ...stats,
-            finance_wallet_balance: stats.total_balance // Legacy compatibility
+            finance_wallet_balance: stats.finance_wallet_balance !== undefined ? stats.finance_wallet_balance : stats.total_balance
          } 
       });
    } catch (error) {

@@ -8,7 +8,7 @@ superAdminRoute.get("/admin/users", requireSuperAdmin, superAdminController.getA
 superAdminRoute.patch("/admin/users/toggle-suspension", requireSuperAdmin, superAdminController.toggleSuspension);
 
 // Dashboard & Statistics
-superAdminRoute.get("/admin/dashboard/stats", requireSuperAdmin, superAdminController.getDashboardStats);
+superAdminRoute.get("/admin/dashboard/stats", requireFinanceOrAdmin, superAdminController.getDashboardStats);
 superAdminRoute.get("/admin/analytics", requireSuperAdmin, superAdminController.getSystemAnalytics);
 superAdminRoute.get("/admin/finance-wallets", requireFinanceOrAdmin, superAdminController.getFinanceWallets);
 superAdminRoute.get("/admin/wallet-transactions", requireFinanceOrAdmin, superAdminController.getWalletTransactions);
