@@ -128,6 +128,8 @@ CREATE INDEX IF NOT EXISTS idx_trainings_trainer_id ON trainings(trainer_id);
 -- CREATE INDEX IF NOT EXISTS idx_trainings_is_active ON trainings(is_active);
 CREATE INDEX IF NOT EXISTS idx_training_material_id ON training_materials(id);
 CREATE INDEX IF NOT EXISTS idx_training_enrollments_training_id ON training_enrollments(training_id);
+
+ALTER TABLE training_enrollments ADD COLUMN IF NOT EXISTS farmer_id UUID REFERENCES vendors(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_training_enrollments_farmer_id ON training_enrollments(farmer_id);
 
 -- Insert default training categories
