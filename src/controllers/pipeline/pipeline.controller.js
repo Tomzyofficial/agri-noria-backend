@@ -13,6 +13,7 @@ import {
    getClusterSupervision, upsertClusterSupervision,
    createHarvestApproval,
    createLogisticsEntry, getLogisticsByCluster,
+   createPreHarvestListing, getPreHarvestListingsByCluster, getAllPreHarvestListings,
    createBuyerMatch, getBuyerMatches,
    createSale, getSalesByCluster,
    createRepayment, updateRepayment,
@@ -32,10 +33,21 @@ import {
    getEcosystemOrderPaymentByReference, recordEcosystemPaystackVerification, confirmEcosystemOrderPayment,
    processEscrowPayment, assignOrderDistributor, getAllEcosystemOrders,
    getEcosystemOrdersByDistributor, markOrderDelivered, updateEcosystemOrderStatus,
-   getDistributorStats
+   getDistributorStats, confirmInputDelivery,
+   getClusterChats, saveClusterChat,
+   scheduleClusterTraining, getClusterTrainings, getClusterTrainingById, updateClusterTrainingStatus,
+   createForwardContract, getForwardContractsByBuyer, getForwardContractsForSales
 } from "../../db/pipeline/pipeline.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
+import { verifyBuyerToken } from "../../sessions/buyer.auth.session.js";
 import { initializePaystack, verifyPaystackTransaction } from "../../lib/services/paystack.service.js";
+import agoraService from "../../services/agora.service.js";
+
+const createAgoraUid = (role, vendorId) => {
+   const idPrefix = String(vendorId).replace(/-/g, "").slice(0, 10);
+   const nonce = Math.random().toString(36).slice(2, 8);
+   return `${role}_${idPrefix}_${Date.now()}_${nonce}`;
+};
 
 const INPUT_RATE_PER_HECTARE = 28000; // ₦28,000 per hectare for input financing
 
@@ -295,6 +307,145 @@ pipelineController.removeFarmer = async (req, res) => {
    }
 };
 
+// ============ CLUSTER CHATS ============
+
+pipelineController.getClusterChats = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const chats = await getClusterChats(req.params.id);
+      return res.status(200).json({ success: true, data: chats });
+   } catch (error) {
+      console.error("Error fetching cluster chats:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch cluster chats" });
+   }
+};
+
+pipelineController.sendClusterChat = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { message } = req.body;
+      if (!message) return res.status(400).json({ success: false, error: "Message is required" });
+
+      const chat = await saveClusterChat(req.params.id, payload.id, message);
+
+      // Broadcast to connected socket clients in this cluster room
+      const io = req.app.get("io");
+      if (io) {
+         io.to(`cluster_${req.params.id}`).emit("new_message", chat);
+      }
+
+      return res.status(201).json({ success: true, data: chat });
+   } catch (error) {
+      console.error("Error sending cluster chat:", error);
+      return res.status(500).json({ success: false, error: "Failed to send cluster chat" });
+   }
+};
+
+// ============ CLUSTER TRAINING (LIVE SESSIONS) ============
+
+pipelineController.scheduleTraining = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { title, description, scheduled_at } = req.body;
+      const { id: clusterId } = req.params;
+      
+      if (!title || !scheduled_at) {
+         return res.status(400).json({ success: false, error: "Title and scheduled_at are required" });
+      }
+
+      const training = await scheduleClusterTraining(clusterId, payload.id, title, description, scheduled_at);
+      return res.status(201).json({ success: true, data: training });
+   } catch (error) {
+      console.error("Error scheduling training:", error);
+      return res.status(500).json({ success: false, error: "Failed to schedule training" });
+   }
+};
+
+pipelineController.getClusterLiveTrainings = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const trainings = await getClusterTrainings(req.params.id);
+      return res.status(200).json({ success: true, data: trainings });
+   } catch (error) {
+      console.error("Error fetching trainings:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch trainings" });
+   }
+};
+
+pipelineController.updateTrainingStatus = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { status } = req.body;
+      const training = await updateClusterTrainingStatus(req.params.trainingId, status);
+      return res.status(200).json({ success: true, data: training });
+   } catch (error) {
+      console.error("Error updating training status:", error);
+      return res.status(500).json({ success: false, error: "Failed to update training status" });
+   }
+};
+
+pipelineController.startClusterTraining = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const training = await getClusterTrainingById(req.params.trainingId);
+      if (!training) return res.status(404).json({ success: false, error: "Training not found" });
+
+      if (training.supervisor_id !== payload.id) {
+         return res.status(403).json({ success: false, error: "Only the supervisor can start this session" });
+      }
+
+      await updateClusterTrainingStatus(training.id, "Live");
+      
+      const uid = createAgoraUid("supervisor", payload.id);
+      const agoraToken = agoraService.generateRtcToken(training.agora_channel, uid, "publisher", 7200);
+
+      return res.status(200).json({
+         success: true,
+         data: { training, agoraToken, channelName: training.agora_channel, appId: agoraService.getAppId(), uid }
+      });
+   } catch (error) {
+      console.error("Error starting cluster training:", error);
+      return res.status(500).json({ success: false, error: "Failed to start training" });
+   }
+};
+
+pipelineController.joinClusterTraining = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const training = await getClusterTrainingById(req.params.trainingId);
+      if (!training) return res.status(404).json({ success: false, error: "Training not found" });
+
+      if (training.status !== "Live") {
+         return res.status(400).json({ success: false, error: "Training is not currently live" });
+      }
+
+      const uid = createAgoraUid("farmer", payload.id);
+      const agoraToken = agoraService.generateRtcToken(training.agora_channel, uid, "subscriber", 7200);
+
+      return res.status(200).json({
+         success: true,
+         data: { training, agoraToken, channelName: training.agora_channel, appId: agoraService.getAppId(), uid }
+      });
+   } catch (error) {
+      console.error("Error joining cluster training:", error);
+      return res.status(500).json({ success: false, error: "Failed to join training" });
+   }
+};
+
 // ============ TRAINING ============
 
 pipelineController.getTrainingProgress = async (req, res) => {
@@ -422,7 +573,7 @@ pipelineController.getPendingInputs = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const requests = await getPendingInputRequests();
+      const requests = await getPendingInputRequests(payload.id, payload.role);
       return res.status(200).json({ success: true, data: requests });
    } catch (error) {
       console.error("Error fetching pending inputs:", error);
@@ -611,10 +762,6 @@ pipelineController.updateInputStatus = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      if (payload.role?.toLowerCase() !== 'distributor') {
-         return res.status(403).json({ success: false, error: "Access denied. Not a distributor." });
-      }
-
       const { status } = req.body;
       if (!['dispatched', 'delivered'].includes(status)) {
          return res.status(400).json({ success: false, error: "Invalid status" });
@@ -627,6 +774,19 @@ pipelineController.updateInputStatus = async (req, res) => {
    } catch (error) {
       console.error("Error updating input status:", error);
       return res.status(500).json({ success: false, error: "Failed to update status" });
+   }
+};
+
+pipelineController.confirmDelivery = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const confirmed = await confirmInputDelivery(req.params.id, payload.id);
+      return res.status(200).json({ success: true, data: confirmed });
+   } catch (error) {
+      console.error("Error confirming delivery:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to confirm delivery" });
    }
 };
 
@@ -890,7 +1050,7 @@ pipelineController.getStats = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const stats = await getPipelineStats();
+      const stats = await getPipelineStats(payload.id, payload.role);
       return res.status(200).json({ success: true, data: stats });
    } catch (error) {
       console.error("Error fetching stats:", error);
@@ -1285,6 +1445,104 @@ pipelineController.getDistributorStats = async (req, res) => {
    } catch (error) {
       console.error("Error fetching distributor stats:", error);
       return res.status(500).json({ success: false, error: "Failed to fetch distributor stats" });
+   }
+};
+
+pipelineController.createPreHarvestListing = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      if (payload.role?.toLowerCase() !== 'cluster supervisor') {
+         return res.status(403).json({ success: false, error: "Access denied" });
+      }
+
+      const { cluster_id, program_id, commodity, estimated_yield_tons, offer_price_per_ton, expected_harvest_date } = req.body;
+      const data = {
+         cluster_id, supervisor_id: payload.id, program_id, commodity,
+         estimated_yield_tons, offer_price_per_ton, expected_harvest_date
+      };
+      const listing = await createPreHarvestListing(data);
+      return res.status(201).json({ success: true, data: listing });
+   } catch (error) {
+      console.error("Error creating pre-harvest listing:", error);
+      return res.status(500).json({ success: false, error: "Failed to create listing" });
+   }
+};
+
+pipelineController.getClusterPreHarvestListings = async (req, res) => {
+   try {
+      const { id } = req.params;
+      const listings = await getPreHarvestListingsByCluster(id);
+      return res.status(200).json({ success: true, data: listings });
+   } catch (error) {
+      console.error("Error fetching cluster pre-harvest listings:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch listings" });
+   }
+};
+
+pipelineController.getAllPreHarvestOpportunities = async (req, res) => {
+   try {
+      const listings = await getAllPreHarvestListings();
+      return res.status(200).json({ success: true, data: listings });
+   } catch (error) {
+      console.error("Error fetching all pre-harvest opportunities:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch opportunities" });
+   }
+};
+
+pipelineController.createForwardContract = async (req, res) => {
+   try {
+      let payload = await verifyBuyerToken(req);
+      if (!payload) {
+         const vendorPayload = await verifyVendorToken(req);
+         if (!vendorPayload || !['exporter', 'off-taker', 'warehouse buyer', 'processor'].includes(vendorPayload.role?.toLowerCase())) {
+            return res.status(401).json({ success: false, error: "Unauthorized" });
+         }
+         payload = { buyer_id: vendorPayload.id };
+      }
+
+      const { pre_harvest_listing_id, quantity_tons, total_price } = req.body;
+      const data = {
+         buyer_id: payload.buyer_id, pre_harvest_listing_id, quantity_tons, total_price
+      };
+      const contract = await createForwardContract(data);
+      return res.status(201).json({ success: true, data: contract });
+   } catch (error) {
+      console.error("Error creating forward contract:", error);
+      return res.status(500).json({ success: false, error: "Failed to create forward contract" });
+   }
+};
+
+pipelineController.getBuyerForwardContracts = async (req, res) => {
+   try {
+      let payload = await verifyBuyerToken(req);
+      if (!payload) {
+         const vendorPayload = await verifyVendorToken(req);
+         if (!vendorPayload || !['exporter', 'off-taker', 'warehouse buyer', 'processor'].includes(vendorPayload.role?.toLowerCase())) {
+            return res.status(401).json({ success: false, error: "Unauthorized" });
+         }
+         payload = { buyer_id: vendorPayload.id };
+      }
+
+      const contracts = await getForwardContractsByBuyer(payload.buyer_id);
+      return res.status(200).json({ success: true, data: contracts });
+   } catch (error) {
+      console.error("Error fetching buyer forward contracts:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch forward contracts" });
+   }
+};
+
+pipelineController.getSalesForwardContracts = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const contracts = await getForwardContractsForSales();
+      return res.status(200).json({ success: true, data: contracts });
+   } catch (error) {
+      console.error("Error fetching sales forward contracts:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch sales forward contracts" });
    }
 };
 

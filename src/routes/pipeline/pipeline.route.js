@@ -12,6 +12,16 @@ pipelineRoute.post("/pipeline/warehouse/inventory", pipelineController.addWareho
 pipelineRoute.delete("/pipeline/warehouse/inventory/:id", pipelineController.removeWarehouseStock);
 pipelineRoute.get("/pipeline/distributors", pipelineController.getDistributors);
 
+// Pre-Harvest
+pipelineRoute.post("/pipeline/preharvest", pipelineController.createPreHarvestListing);
+pipelineRoute.get("/pipeline/preharvest/cluster/:id", pipelineController.getClusterPreHarvestListings);
+pipelineRoute.get("/pipeline/preharvest/opportunities", pipelineController.getAllPreHarvestOpportunities);
+
+// Forward Contracts
+pipelineRoute.post("/pipeline/forward-contracts", pipelineController.createForwardContract);
+pipelineRoute.get("/pipeline/forward-contracts/buyer", pipelineController.getBuyerForwardContracts);
+pipelineRoute.get("/pipeline/forward-contracts/sales", pipelineController.getSalesForwardContracts);
+
 // Farmer Profiles
 pipelineRoute.post("/pipeline/farmer-profile", pipelineController.createFarmerProfile);
 pipelineRoute.get("/pipeline/farmer-profile/me", pipelineController.getMyFarmerProfile);
@@ -32,6 +42,15 @@ pipelineRoute.post("/pipeline/clusters/assign", pipelineController.assignFarmer)
 pipelineRoute.get("/pipeline/clusters/:id/members", pipelineController.getClusterMembers);
 pipelineRoute.delete("/pipeline/clusters/:id/members/:farmerId", pipelineController.removeFarmer);
 
+// Cluster Chats & Training
+pipelineRoute.get("/pipeline/clusters/:id/chats", pipelineController.getClusterChats);
+pipelineRoute.post("/pipeline/clusters/:id/chats", pipelineController.sendClusterChat);
+pipelineRoute.post("/pipeline/clusters/:id/training", pipelineController.scheduleTraining);
+pipelineRoute.get("/pipeline/clusters/:id/training", pipelineController.getClusterLiveTrainings);
+pipelineRoute.post("/pipeline/clusters/training/:trainingId/start", pipelineController.startClusterTraining);
+pipelineRoute.post("/pipeline/clusters/training/:trainingId/join", pipelineController.joinClusterTraining);
+pipelineRoute.patch("/pipeline/clusters/training/:trainingId/status", pipelineController.updateTrainingStatus);
+
 // Training
 pipelineRoute.get("/pipeline/training", pipelineController.getTrainingProgress);
 pipelineRoute.post("/pipeline/training/update", pipelineController.updateTraining);
@@ -46,6 +65,7 @@ pipelineRoute.patch("/pipeline/inputs/:id/submit-items", pipelineController.subm
 pipelineRoute.patch("/pipeline/inputs/:id/approve-items", pipelineController.approveItems);
 pipelineRoute.get("/pipeline/inputs/distributor", pipelineController.getDistributorInputs);
 pipelineRoute.patch("/pipeline/inputs/:id/status", pipelineController.updateInputStatus);
+pipelineRoute.patch("/pipeline/inputs/:id/confirm-delivery", pipelineController.confirmDelivery);
 
 // Planting
 pipelineRoute.post("/pipeline/planting", pipelineController.createPlanting);

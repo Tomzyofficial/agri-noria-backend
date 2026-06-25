@@ -15,5 +15,6 @@ institutionAdminRoute.get("/pending-requests", institutionAdminController.getPen
 institutionAdminRoute.get("/distributors", institutionAdminController.getDistributors);
 institutionAdminRoute.post("/approve-funds", institutionAdminController.approveFunds);
 institutionAdminRoute.post("/assign-distributor", institutionAdminController.assignDistributor);
+institutionAdminRoute.post("/payout-distributor", institutionAdminController.payoutDistributor);
 
 export default institutionAdminRoute;

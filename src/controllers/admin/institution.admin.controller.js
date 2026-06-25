@@ -1,5 +1,5 @@
 import { getInstitutionAnalytics, getInstitutionTransactions } from "../../db/admin/admin.db.js";
-import { getPendingInputRequests, approveAndAssignInputRequest, getAllDistributors, approveInputFunds, getWalletByOwner, createWallet, depositLockedFunds } from "../../db/pipeline/pipeline.db.js";
+import { getPendingInputRequests, approveAndAssignInputRequest, getAllDistributors, approveInputFunds, getWalletByOwner, createWallet, depositLockedFunds, payoutDistributor } from "../../db/pipeline/pipeline.db.js";
 import pool from "../../lib/connect.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
@@ -217,6 +217,25 @@ institutionAdminController.approveFunds = async (req, res) => {
    } catch (error) {
       console.error("Error approving funds:", error);
       return res.status(500).json({ success: false, error: "Failed to approve funds" });
+   }
+};
+
+// Payout distributor for delivered inputs
+institutionAdminController.payoutDistributor = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload || payload.role?.toLowerCase() !== 'finance') {
+         return res.status(403).json({ success: false, error: "Finance role required" });
+      }
+
+      const { requestId } = req.body;
+      if (!requestId) return res.status(400).json({ success: false, error: "Request ID required" });
+
+      const updatedRequest = await payoutDistributor(requestId, payload.id);
+      return res.status(200).json({ success: true, data: updatedRequest });
+   } catch (error) {
+      console.error("Error paying out distributor:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to payout distributor" });
    }
 };
 
