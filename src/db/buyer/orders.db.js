@@ -124,13 +124,13 @@ export async function updateOrderDelivery(orderId, deliveryData) {
 }
 
 // Delete order (soft delete by updating status) by logistics vendor
-export async function cancelOrder(orderId, reason) {
-  const query = `
-    UPDATE orders SET status = 'cancelled', notes = COALESCE($1, notes), updated_at = NOW()
-    WHERE id = $2 AND status NOT IN ('completed', 'delivered') RETURNING *`;
-  const result = await pool.query(query, [reason, orderId]);
-  return result.rows[0];
-}
+// export async function cancelOrder(orderId, reason) {
+//   const query = `
+//     UPDATE orders SET status = 'cancelled', notes = COALESCE($1, notes), updated_at = NOW()
+//     WHERE id = $2 AND status NOT IN ('completed', 'delivered') RETURNING *`;
+//   const result = await pool.query(query, [reason, orderId]);
+//   return result.rows[0];
+// }
 
 // Get order statistics for seller/farmer
 export async function getSellerOrderStats(sellerId) {

@@ -1,21 +1,21 @@
 import express from "express";
 import emailVerificationController from "../controllers/email-verification.controller.js";
 
-const router = express.Router();
+const emailRoute = express.Router();
 
 // Send verification code
-router.post("/send", emailVerificationController.sendVerificationCode);
+emailRoute.post("/send", emailVerificationController.sendVerificationCode);
 
 // Verify email code
-router.post("/verify", emailVerificationController.verifyCode);
+emailRoute.post("/verify", emailVerificationController.verifyCode);
 
 // Check verification status
-router.get("/status", emailVerificationController.checkStatus);
+emailRoute.get("/status", emailVerificationController.checkStatus);
 
 // Resend verification code
-router.post("/resend", emailVerificationController.resendCode);
+emailRoute.post("/resend", emailVerificationController.resendCode);
 
 // Test email service (development only)
-router.post("/test", emailVerificationController.testEmail);
+emailRoute.post("/test", emailVerificationController.testEmail);
 
-export default router;
+export default emailRoute;

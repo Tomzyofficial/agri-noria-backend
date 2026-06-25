@@ -56,7 +56,7 @@ marketplaceRoute.post(
 
 // Submit a booking request for a specific storage listing
 marketplaceRoute.post(
-  "/marketplace/listed-storage/:id/booking",
+  "/marketplace/booking-request/:id",
   marketplaceStorageController.submitBookingRequest,
 );
 

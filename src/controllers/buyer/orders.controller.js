@@ -5,8 +5,8 @@ import {
   getOrdersByBuyerId,
   getOrdersBySellerId,
   updateOrderStatus,
-  updateOrderDelivery,
-  cancelOrder,
+  //   updateOrderDelivery,
+  //   cancelOrder,
   getSellerOrderStats,
   getBuyerOrderStats,
 } from "../../db/buyer/orders.db.js";
@@ -406,41 +406,41 @@ export async function updateOrderStatusController(req, res) {
 }
 
 // Cancel order
-export async function cancelOrderController(req, res) {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
+// export async function cancelOrderController(req, res) {
+//   try {
+//     const { id } = req.params;
+//     const { reason } = req.body;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Order ID is required",
-      });
-    }
+//     if (!id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Order ID is required",
+//       });
+//     }
 
-    const order = await cancelOrder(id, reason);
+//     const order = await cancelOrder(id, reason);
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found or cannot be cancelled",
-      });
-    }
+//     if (!order) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Order not found or cannot be cancelled",
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      message: "Order cancelled successfully",
-      data: order,
-    });
-  } catch (error) {
-    console.error("Error cancelling order:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to cancel order",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       message: "Order cancelled successfully",
+//       data: order,
+//     });
+//   } catch (error) {
+//     console.error("Error cancelling order:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to cancel order",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get seller order statistics
 export async function getSellerOrderStatsController(req, res) {

@@ -25,6 +25,7 @@ import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 import { verifyBuyerToken } from "../../sessions/buyer.auth.session.js";
 import vehicleUploadSchema from "../../lib/validations/validateLogisticsOperation.js";
 import emailService from "../../services/email/email.service.js";
+import { AppError } from "../../utils/AppError.js";
 
 const logisiticsOperation = {};
 
@@ -207,10 +208,11 @@ logisiticsOperation.getLogisticsProvidersNearBuyer = async (req, res) => {
   }
   try {
     const result = await getLogisticsProvidersNearBuyer(address);
-    if (result.success) {
-      return res.status(200).json({ success: true, data: result.providers });
+    if (!result.success) {
+      throw new AppError(result.error, 404);
     }
-    return res.status(400).json({ success: false, error: result.error });
+    return res.status(200).json({ success: true, data: result.providers });
+    //  return res.status(400).json({ success: false, error: result.error });
   } catch (error) {
     console.error("Error", error);
     return res.status(500).json({

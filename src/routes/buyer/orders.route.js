@@ -5,7 +5,7 @@ import {
   getBuyerOrdersController,
   getSellerOrdersController,
   updateOrderStatusController,
-  cancelOrderController,
+  //   cancelOrderController,
   getSellerOrderStatsController,
   getBuyerOrderStatsController,
   confirmBuyerSatisfactionController,
@@ -36,7 +36,7 @@ ordersRoute.get("/orders/:id", getOrderByIdController);
 ordersRoute.put("/orders/:id/status", updateOrderStatusController);
 
 // Cancel order
-ordersRoute.put("/orders/:id/cancel", cancelOrderController);
+// ordersRoute.put("/orders/:id/cancel", cancelOrderController);
 
 // Confirm buyer satisfaction with OTP
 ordersRoute.post(
