@@ -898,7 +898,6 @@ async function getPipelineStats(userId, userRole) {
    try {
       const isSupervisor = userRole && userRole.toLowerCase() === 'cluster supervisor';
 
-      // Only count farmers who registered under the 'ecosystem' workspace
       let farmersQuery = "SELECT COUNT(*) as count FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem'";
 
       if (isSupervisor) {
