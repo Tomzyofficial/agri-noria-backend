@@ -238,5 +238,28 @@ institutionAdminController.payoutDistributor = async (req, res) => {
       return res.status(500).json({ success: false, error: error.message || "Failed to payout distributor" });
    }
 };
+// Dynamic Pages Endpoints
+const createDynamicController = (dbMethodName) => async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const data = await dbModule[dbMethodName](payload.id, payload.role);
+
+      return res.status(200).json({ success: true, data });
+   } catch (error) {
+      console.error(`Error in ${dbMethodName}:`, error);
+      return res.status(500).json({ success: false, error: "Server Error" });
+   }
+};
+
+institutionAdminController.getMonitoring = createDynamicController('getInstitutionMonitoring');
+institutionAdminController.getEscrow = createDynamicController('getInstitutionEscrow');
+institutionAdminController.getProcurement = createDynamicController('getInstitutionProcurement');
+institutionAdminController.getTraceability = createDynamicController('getInstitutionTraceability');
+institutionAdminController.getReports = createDynamicController('getInstitutionReports');
+institutionAdminController.getExtension = createDynamicController('getInstitutionExtension');
+institutionAdminController.getNgoDistribution = createDynamicController('getInstitutionNgoDistribution');
 
 export default institutionAdminController;

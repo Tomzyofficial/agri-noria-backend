@@ -347,13 +347,23 @@ async function updateSystemSettings(settings) {
 }
 
 // Get institution-specific analytics for dashboard
-async function getInstitutionAnalytics() {
+async function getInstitutionAnalytics(institutionId, role) {
+   const isGovernment = role === 'government';
+   
+   // If government, see all. Otherwise, see only programs created by this institution
+   const programsFilter = isGovernment ? "" : `WHERE created_by = '${institutionId}'`;
+   
+   // If government, see all farmers. Otherwise, see only enrolled farmers
+   const farmersCountQuery = isGovernment 
+      ? `(SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem')`
+      : `(SELECT COUNT(DISTINCT farmer_id) FROM farmer_programmes WHERE program_id IN (SELECT id FROM programs WHERE created_by = '${institutionId}'))`;
+
    const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats] = await Promise.all([
       pool.query(`
          SELECT 
-            (SELECT COUNT(*) FROM programs) as active_programs,
-            (SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem') as total_farmers,
-            (SELECT COALESCE(SUM(target_hectares), 0) FROM programs) as total_hectares
+            (SELECT COUNT(*) FROM programs ${programsFilter}) as active_programs,
+            ${farmersCountQuery} as total_farmers,
+            (SELECT COALESCE(SUM(target_hectares), 0) FROM programs ${programsFilter}) as total_hectares
       `),
       pool.query(`
          SELECT 
@@ -518,6 +528,48 @@ async function getInstitutionTransactions(limit = 10) {
    return rows;
 }
 
+async function getInstitutionMonitoring(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE created_by = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM programme_monitoring ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionEscrow(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM escrow_transactions ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionProcurement(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM procurement_orders ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionTraceability(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM traceability_logs ${filter} ORDER BY timestamp DESC`);
+   return rows;
+}
+
+async function getInstitutionReports(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE generated_by = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM institutional_reports ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionExtension(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM extension_services ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionNgoDistribution(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM ngo_distributions ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
 export {
    getAllUsers,
    getUserCountByRole,
@@ -544,5 +596,12 @@ export {
    getInstitutionPortfolio,
    getInstitutionImpact,
    getInstitutionTransactions,
+   getInstitutionMonitoring,
+   getInstitutionEscrow,
+   getInstitutionProcurement,
+   getInstitutionTraceability,
+   getInstitutionReports,
+   getInstitutionExtension,
+   getInstitutionNgoDistribution,
 };
 
