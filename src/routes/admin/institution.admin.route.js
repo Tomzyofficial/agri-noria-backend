@@ -17,4 +17,13 @@ institutionAdminRoute.post("/approve-funds", institutionAdminController.approveF
 institutionAdminRoute.post("/assign-distributor", institutionAdminController.assignDistributor);
 institutionAdminRoute.post("/payout-distributor", institutionAdminController.payoutDistributor);
 
+// Missing Pages endpoints
+institutionAdminRoute.get("/monitoring", institutionAdminController.getMonitoring);
+institutionAdminRoute.get("/escrow", institutionAdminController.getEscrow);
+institutionAdminRoute.get("/procurement", institutionAdminController.getProcurement);
+institutionAdminRoute.get("/traceability", institutionAdminController.getTraceability);
+institutionAdminRoute.get("/reports", institutionAdminController.getReports);
+institutionAdminRoute.get("/extension", institutionAdminController.getExtension);
+institutionAdminRoute.get("/ngo-distribution", institutionAdminController.getNgoDistribution);
+
 export default institutionAdminRoute;

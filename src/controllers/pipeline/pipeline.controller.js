@@ -136,7 +136,7 @@ pipelineController.getAllFarmers = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const farmers = await getAllFarmerProfiles();
+      const farmers = await getAllFarmerProfiles(payload.id, payload.role);
       return res.status(200).json({ success: true, data: farmers });
    } catch (error) {
       console.error("Error fetching farmers:", error);

@@ -11,6 +11,7 @@ import {
 } from "../../db/vendor/profile.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
+import pool from "../../lib/connect.js";
 
 const profileController = {};
 // Upload profile image
@@ -359,6 +360,24 @@ profileController.completeOnboarding = async (req, res) => {
     const payload = await verifyVendorToken(req);
     if (!payload)
       return res.status(401).json({ success: false, error: "Unauthorized" });
+
+    // Handle Field Ops specific document submission
+    const { appointment_letter_url, id_card_url, optional_document_url } = req.body || {};
+    if (appointment_letter_url && id_card_url) {
+       const checkDoc = await pool.query("SELECT id FROM field_operations_documents WHERE vendor_id = $1", [payload.id]);
+       if (checkDoc.rows.length > 0) {
+          await pool.query(`
+             UPDATE field_operations_documents 
+             SET appointment_letter_url = $1, id_card_url = $2, optional_document_url = $3, updated_at = now()
+             WHERE vendor_id = $4
+          `, [appointment_letter_url, id_card_url, optional_document_url || null, payload.id]);
+       } else {
+          await pool.query(`
+             INSERT INTO field_operations_documents (vendor_id, appointment_letter_url, id_card_url, optional_document_url)
+             VALUES ($1, $2, $3, $4)
+          `, [payload.id, appointment_letter_url, id_card_url, optional_document_url || null]);
+       }
+    }
 
     const success = await finalizeOnboarding(payload.id);
     if (!success) throw new Error("Failed to finalize onboarding in DB");

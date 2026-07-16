@@ -2,6 +2,8 @@ import bcrypt from "bcryptjs";
 import {
   getUserByEmail,
   createUser,
+  createFarmerProfile,
+  createFieldOperationsDocuments
 } from "../../../db/vendor/vendor.auth.db.js";
 import {
   createVendorSession,
@@ -93,6 +95,7 @@ vendorAuthController.signin = async (req, res) => {
         lname: vendor.lname,
         workspace: vendor.workspace,
         role: vendor.role || vendor.role,
+        approval_status: vendor.approval_status,
       },
       rememberMe,
     });
@@ -147,6 +150,9 @@ vendorAuthController.register = async (req, res) => {
     currency,
     workspace,
     role,
+    appointment_letter_url,
+    id_card_url,
+    optional_document_url,
   } = req.body;
 
   // Trim string fields
@@ -180,6 +186,11 @@ vendorAuthController.register = async (req, res) => {
   if (!workspace) errors.push("Workspace is required");
   if (!role) errors.push("Role is required");
 
+  const fieldOpsRoles = ["field officer", "agronomist", "inspector", "enumerator", "field operations supervisor"];
+  const isFieldOps = role && fieldOpsRoles.includes(role.toLowerCase());
+  
+  // Documents are now handled in the onboarding flow, not registration.
+
   if (errors.length > 0) {
     return res.status(400).json({
       success: false,
@@ -211,6 +222,11 @@ vendorAuthController.register = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(pword, SALT_ROUNDS);
 
+    let approval_status = "approved";
+    if (isFieldOps) {
+      approval_status = "pending_approval";
+    }
+
     // Create vendor account
     const newVendor = await createUser(
       fname,
@@ -221,6 +237,7 @@ vendorAuthController.register = async (req, res) => {
       terms_of_service,
       workspace,
       role,
+      approval_status
     );
 
     if (!newVendor) {
@@ -228,6 +245,20 @@ vendorAuthController.register = async (req, res) => {
         success: false,
         error: ["Failed to create vendor account. Try again"],
       });
+    }
+
+    if (isFieldOps) {
+      await createFieldOperationsDocuments(
+        newVendor.id,
+        appointment_letter_url,
+        id_card_url,
+        optional_document_url
+      );
+    } else if (role.toLowerCase() === "farmer") {
+      const year = new Date().getFullYear();
+      const randomPart = Math.floor(100000 + Math.random() * 900000);
+      const ain = `AGRI-${year}-${randomPart}`;
+      await createFarmerProfile(newVendor.id, ain);
     }
 
     // Create session (attach cookie to response)
@@ -239,6 +270,7 @@ vendorAuthController.register = async (req, res) => {
         lname: newVendor.lname,
         workspace: newVendor.workspace,
         role: newVendor.role,
+        approval_status: approval_status,
       },
     });
 

@@ -152,14 +152,27 @@ async function getFarmerProfileByVendor(vendorId) {
    return rows[0] || null;
 }
 
-async function getAllFarmerProfiles() {
+async function getAllFarmerProfiles(institutionId, role) {
+   let roleFilter = "";
+   const params = [];
+   
+   if (role && role !== 'government' && role !== 'super admin' && role !== 'admin') {
+      roleFilter = `AND EXISTS (
+         SELECT 1 FROM farmer_programmes fpm 
+         JOIN programs p2 ON fpm.program_id = p2.id 
+         WHERE fpm.farmer_id = fp.id AND p2.created_by = $1
+      )`;
+      params.push(institutionId);
+   }
+
    const { rows } = await pool.query(
-      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date
+      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, 
+              (SELECT string_agg(p.name, ', ') FROM farmer_programmes fpm JOIN programs p ON fpm.program_id = p.id WHERE fpm.farmer_id = fp.id) as program_name
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
-       LEFT JOIN programs p ON fp.program_id = p.id
-       WHERE LOWER(v.workspace) = 'ecosystem'
-       ORDER BY fp.created_at DESC`
+       WHERE LOWER(v.workspace) = 'ecosystem' ${roleFilter}
+       ORDER BY fp.created_at DESC`,
+       params
    );
    return rows;
 }
@@ -274,10 +287,11 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
 
 async function getClusterMembers(clusterId) {
    const { rows } = await pool.query(
-      `SELECT cm.*, fp.commodity, fp.farm_size_hectares, fp.program_id, v.fname, v.lname, v.email
+      `SELECT cm.*, fp.commodity, fp.farm_size_hectares, fp.program_id, v.fname, v.lname, v.email, f.boundary_polygon
        FROM cluster_members cm
        JOIN farmer_profiles fp ON cm.farmer_id = fp.id
        JOIN vendors v ON fp.vendor_id = v.id
+       LEFT JOIN farms f ON v.id = f.vendor_id
        WHERE cm.cluster_id = $1`,
       [clusterId]
    );
