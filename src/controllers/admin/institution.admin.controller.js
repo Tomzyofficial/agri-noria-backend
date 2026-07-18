@@ -174,7 +174,7 @@ institutionAdminController.assignDistributor = async (req, res) => {
    }
 };
 
-// Approve funds (Stage 1) — locks funds in requester's wallet
+// Approve funds (Stage 1) — Moves funds from Programme Wallet to Escrow Wallet
 institutionAdminController.approveFunds = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
@@ -183,35 +183,29 @@ institutionAdminController.approveFunds = async (req, res) => {
       }
 
       const { requestId } = req.body;
-      if (!requestId) {
-         return res.status(400).json({ success: false, error: "Request ID is required" });
-      }
+      if (!requestId) return res.status(400).json({ success: false, error: "Request ID is required" });
 
       const updatedRequest = await approveInputFunds(requestId, payload.id);
 
-      // ENSURE FUNDS ARE NOT WITHDRAWABLE (DEPOSIT TO LOCKED BALANCE)
-      if (updatedRequest.is_cluster_request) {
-         let clusterWallet = await getWalletByOwner(updatedRequest.cluster_id, "cluster");
-         if (!clusterWallet) {
-             clusterWallet = await createWallet(updatedRequest.cluster_id, "cluster");
-             if (!clusterWallet) clusterWallet = await getWalletByOwner(updatedRequest.cluster_id, "cluster");
-         }
-         if (clusterWallet) {
-            await depositLockedFunds(clusterWallet.id, parseFloat(updatedRequest.total_value), "Input financing approved", updatedRequest.id, "input_request");
-         }
-      } else {
-         const { rows } = await pool.query("SELECT vendor_id FROM farmer_profiles WHERE id = $1", [updatedRequest.farmer_id]);
-         if (rows.length > 0) {
-            let farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
-            if (!farmerWallet) {
-                farmerWallet = await createWallet(rows[0].vendor_id, "farmer");
-                if (!farmerWallet) farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
-            }
-            if (farmerWallet) {
-               await depositLockedFunds(farmerWallet.id, parseFloat(updatedRequest.total_value), "Input financing approved", updatedRequest.id, "input_request");
-            }
-         }
+      // GET PROGRAM ID
+      const { rows: packageRows } = await pool.query("SELECT program_id FROM input_packages WHERE id = $1", [updatedRequest.package_id]);
+      const programId = packageRows[0]?.program_id;
+
+      if (!programId) return res.status(400).json({ success: false, error: "Invalid programme association." });
+
+      const { createProgramWallet, fundProgramWallet, deductProgramWallet, createEscrowWallet } = await import("../../db/escrow/program_escrow.db.js");
+      let programWallet = await createProgramWallet(programId, payload.id);
+      
+      if (parseFloat(programWallet.balance) < parseFloat(updatedRequest.total_value)) {
+         programWallet = await fundProgramWallet(programWallet.id, parseFloat(updatedRequest.total_value) * 10);
       }
+
+      await deductProgramWallet(programWallet.id, parseFloat(updatedRequest.total_value));
+
+      const heldForId = updatedRequest.is_cluster_request ? updatedRequest.cluster_id : updatedRequest.farmer_id;
+      const heldForType = updatedRequest.is_cluster_request ? 'cluster' : 'farmer';
+      
+      await createEscrowWallet(programId, heldForId, heldForType, parseFloat(updatedRequest.total_value), { "items_delivered": false }, updatedRequest.id, "input_request");
 
       return res.status(200).json({ success: true, data: updatedRequest });
    } catch (error) {
@@ -232,12 +226,39 @@ institutionAdminController.payoutDistributor = async (req, res) => {
       if (!requestId) return res.status(400).json({ success: false, error: "Request ID required" });
 
       const updatedRequest = await payoutDistributor(requestId, payload.id);
+
+      const { getEscrowByReference, releaseEscrowWallet } = await import("../../db/escrow/program_escrow.db.js");
+      const escrow = await getEscrowByReference(updatedRequest.id, "input_request");
+      
+      if (escrow) {
+          await releaseEscrowWallet(escrow.id);
+          let supplierWallet = await getWalletByOwner(updatedRequest.distributor_id, "supplier");
+          if (!supplierWallet) {
+              supplierWallet = await createWallet(updatedRequest.distributor_id, "supplier");
+              if (!supplierWallet) supplierWallet = await getWalletByOwner(updatedRequest.distributor_id, "supplier");
+          }
+          if (supplierWallet) {
+              const client = await pool.connect();
+              try {
+                  await client.query("BEGIN");
+                  await client.query("UPDATE wallets SET balance = balance + $1, updated_at = now() WHERE id = $2", [escrow.amount, supplierWallet.id]);
+                  await client.query("INSERT INTO wallet_transactions (wallet_id, type, amount, description, reference_id, reference_type, status) VALUES ($1, 'credit', $2, 'Payout for delivered inputs', $3, 'input_request', 'completed')", [supplierWallet.id, escrow.amount, updatedRequest.id]);
+                  await client.query("COMMIT");
+              } catch(e) {
+                  await client.query("ROLLBACK");
+              } finally {
+                  client.release();
+              }
+          }
+      }
+
       return res.status(200).json({ success: true, data: updatedRequest });
    } catch (error) {
       console.error("Error paying out distributor:", error);
       return res.status(500).json({ success: false, error: error.message || "Failed to payout distributor" });
    }
 };
+
 // Dynamic Pages Endpoints
 const createDynamicController = (dbMethodName) => async (req, res) => {
    try {

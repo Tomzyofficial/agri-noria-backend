@@ -112,7 +112,7 @@ async function getDashboardStats() {
       pool.query("SELECT COUNT(*) as count FROM vendors"),
       pool.query("SELECT COUNT(*) as count FROM buyers"),
       pool.query("SELECT COUNT(*) as count FROM buyer_agreements"),
-      pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM escrow_payments WHERE status = 'held'"),
+      pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM escrow_wallets WHERE status = 'held'"),
       pool.query("SELECT COALESCE(SUM(balance), 0) as total FROM wallets"),
       pool.query("SELECT COALESCE(SUM(balance), 0) as total FROM finance_wallets")
    ]);
@@ -535,8 +535,29 @@ async function getInstitutionMonitoring(institutionId, role) {
 }
 
 async function getInstitutionEscrow(institutionId, role) {
-   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
-   const { rows } = await pool.query(`SELECT * FROM escrow_transactions ${filter} ORDER BY created_at DESC`);
+   // Fetch from the real 4-wallet escrow table!
+   let query = `
+      SELECT 
+         ew.id,
+         ew.amount,
+         ew.status,
+         ew.created_at,
+         'disbursement' as transaction_type,
+         'Held in escrow for input delivery' as description
+      FROM escrow_wallets ew
+   `;
+   
+   if (role !== 'government') {
+      // Join program_wallets to filter by institution
+      query += `
+         JOIN program_wallets pw ON ew.program_id = pw.program_id
+         WHERE pw.institution_id = '${institutionId}'
+      `;
+   }
+   
+   query += ` ORDER BY ew.created_at DESC`;
+
+   const { rows } = await pool.query(query);
    return rows;
 }
 
