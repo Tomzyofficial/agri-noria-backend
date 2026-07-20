@@ -5,7 +5,7 @@ import pool from './lib/connect.js';
 
 async function run() {
     try {
-        const sql = fs.readFileSync('src/db-commodity-operations.sql', 'utf8');
+        const sql = fs.readFileSync('src/db-institution-pages.sql', 'utf8');
         await pool.query(sql);
         console.log('Success');
     } catch (e) {

@@ -144,35 +144,19 @@ async function getFarmerProfileByVendor(vendorId) {
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN programs p ON fp.program_id = p.id
        LEFT JOIN cluster_members cm ON cm.farmer_id = fp.id
-       WHERE fp.vendor_id = $1
-       ORDER BY cm.assigned_at DESC NULLS LAST
-       LIMIT 1`,
+       WHERE fp.vendor_id = $1`,
       [vendorId]
    );
    return rows[0] || null;
 }
 
-async function getAllFarmerProfiles(institutionId, role) {
-   let roleFilter = "";
-   const params = [];
-   
-   if (role && role !== 'government' && role !== 'super admin' && role !== 'admin') {
-      roleFilter = `AND EXISTS (
-         SELECT 1 FROM farmer_programmes fpm 
-         JOIN programs p2 ON fpm.program_id = p2.id 
-         WHERE fpm.farmer_id = fp.id AND p2.created_by = $1
-      )`;
-      params.push(institutionId);
-   }
-
+async function getAllFarmerProfiles() {
    const { rows } = await pool.query(
-      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, 
-              (SELECT string_agg(p.name, ', ') FROM farmer_programmes fpm JOIN programs p ON fpm.program_id = p.id WHERE fpm.farmer_id = fp.id) as program_name
+      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
-       WHERE LOWER(v.workspace) = 'ecosystem' ${roleFilter}
-       ORDER BY fp.created_at DESC`,
-       params
+       LEFT JOIN programs p ON fp.program_id = p.id
+       ORDER BY fp.created_at DESC`
    );
    return rows;
 }
@@ -269,11 +253,11 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
       query += ` FROM farmer_profiles fp JOIN vendors v ON fp.vendor_id = v.id`;
    }
 
-   query += ` WHERE LOWER(v.workspace) = 'ecosystem'`;
+   query += ` WHERE 1=1`;
 
    if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
       query += ` AND NOT EXISTS (
-         SELECT 1 FROM cluster_members cm WHERE cm.farmer_id = fp.id
+         SELECT 1 FROM cluster_members cm WHERE cm.farmer_id = fp.id AND cm.cluster_id = $1
       )`;
    }
 
@@ -287,11 +271,10 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
 
 async function getClusterMembers(clusterId) {
    const { rows } = await pool.query(
-      `SELECT cm.*, fp.commodity, fp.farm_size_hectares, fp.program_id, v.fname, v.lname, v.email, f.boundary_polygon
+      `SELECT cm.*, fp.commodity, fp.farm_size_hectares, fp.program_id, v.fname, v.lname, v.email
        FROM cluster_members cm
        JOIN farmer_profiles fp ON cm.farmer_id = fp.id
        JOIN vendors v ON fp.vendor_id = v.id
-       LEFT JOIN farms f ON v.id = f.vendor_id
        WHERE cm.cluster_id = $1`,
       [clusterId]
    );
@@ -590,36 +573,9 @@ async function updateInputRequestStatus(requestId, status, distributorId) {
    return rows[0];
 }
 
-async function confirmInputDelivery(requestId, userId) {
-   const client = await pool.connect();
-   try {
-      await client.query("BEGIN");
-
-      const reqRes = await client.query("SELECT * FROM input_requests WHERE id = $1 FOR UPDATE", [requestId]);
-      const request = reqRes.rows[0];
-
-      if (!request) throw new Error("Input request not found");
-      if (request.items_status === 'delivered') throw new Error("Input request already marked as delivered");
-
-      // Mark as delivered
-      const updateRes = await client.query(
-         "UPDATE input_requests SET items_status = 'delivered' WHERE id = $1 RETURNING *",
-         [requestId]
-      );
-
-
-      await client.query("COMMIT");
-      return updateRes.rows[0];
-   } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-   } finally {
-      client.release();
-   }
-}
-
-async function getPendingInputRequests(userId, userRole) {
-   let baseQuery = `SELECT ir.*,
+async function getPendingInputRequests() {
+   const { rows } = await pool.query(
+      `SELECT ir.*,
          fp.farm_size_hectares, fp.onboarding_status, fp.national_id,
          COALESCE(fv.fname, rv.fname) as fname,
          COALESCE(fv.lname, rv.lname) as lname,
@@ -633,47 +589,10 @@ async function getPendingInputRequests(userId, userRole) {
        LEFT JOIN vendors rv ON ir.requester_id = rv.id
        LEFT JOIN clusters c ON ir.cluster_id = c.id
        LEFT JOIN programs p ON c.program_id = p.id
-       WHERE ir.status IN ('pending', 'items_selected', 'approved')`;
-
-   const isSupervisor = userRole && userRole.toLowerCase() === 'cluster supervisor';
-   const params = [];
-   if (isSupervisor) {
-      baseQuery += ` AND c.supervisor_id = $1`;
-      params.push(userId);
-   }
-
-   baseQuery += ` ORDER BY ir.created_at DESC`;
-
-   const { rows } = await pool.query(baseQuery, params);
+       WHERE ir.status IN ('pending', 'items_selected')
+       ORDER BY ir.created_at DESC`
+   );
    return rows;
-}
-
-async function payoutDistributor(requestId, financeUserId) {
-   const client = await pool.connect();
-   try {
-      await client.query("BEGIN");
-
-      const reqRes = await client.query("SELECT * FROM input_requests WHERE id = $1 FOR UPDATE", [requestId]);
-      const request = reqRes.rows[0];
-
-      if (!request) throw new Error("Input request not found");
-      if (request.items_status !== 'delivered') throw new Error("Items must be delivered before payout");
-      if (request.funds_status === 'paid') throw new Error("Payout already completed");
-
-      // Update request status (Finance manually credits wallet elsewhere)
-      const updateRes = await client.query(
-         "UPDATE input_requests SET funds_status = 'paid', status = 'completed' WHERE id = $1 RETURNING *",
-         [requestId]
-      );
-
-      await client.query("COMMIT");
-      return updateRes.rows[0];
-   } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-   } finally {
-      client.release();
-   }
 }
 
 async function getAllInputRequests() {
@@ -732,11 +651,11 @@ async function getFarmSupervisionByFarmer(farmerId) {
 async function upsertFarmSupervision(data) {
    const {
       farmer_id, officer_id, program_id = null,
-      clearing_status = 'pending', clearing_notes = null, clearing_image = null,
-      irrigation_status = 'pending', irrigation_notes = null, irrigation_image = null,
-      ridging_status = 'pending', ridging_notes = null, ridging_image = null,
-      weeding_status = 'pending', weeding_notes = null, weeding_image = null,
-      harvesting_status = 'pending', harvesting_notes = null, harvesting_image = null
+      clearing_status = 'pending', clearing_notes = null,
+      irrigation_status = 'pending', irrigation_notes = null,
+      ridging_status = 'pending', ridging_notes = null,
+      weeding_status = 'pending', weeding_notes = null,
+      harvesting_status = 'pending', harvesting_notes = null
    } = data;
 
    const { rows } = await pool.query(
@@ -907,78 +826,23 @@ async function updateRepayment(repaymentId, recoveredAmount) {
 
 // ============ DASHBOARD STATS ============
 
-async function getPipelineStats(userId, userRole) {
+async function getPipelineStats() {
    const client = await pool.connect();
    try {
-      const isSupervisor = userRole && userRole.toLowerCase() === 'cluster supervisor';
-
-      let farmersQuery = "SELECT COUNT(*) as count FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem'";
-
-      if (isSupervisor) {
-         farmersQuery = `SELECT COUNT(DISTINCT v.id) as count FROM vendors v 
-            JOIN farmer_profiles fp ON v.id = fp.vendor_id
-            JOIN cluster_members cm ON fp.id = cm.farmer_id
-            JOIN clusters c ON cm.cluster_id = c.id
-            WHERE c.supervisor_id = $1`;
-      }
-
-      let clustersQuery = "SELECT COUNT(*) as count FROM clusters WHERE status = 'active'";
-      if (isSupervisor) {
-         clustersQuery = "SELECT COUNT(*) as count FROM clusters WHERE supervisor_id = $1";
-      }
-
-      let pendingInputsQuery = "SELECT COUNT(*) as count FROM input_requests WHERE status = 'pending'";
-      if (isSupervisor) {
-         pendingInputsQuery = "SELECT COUNT(*) as count FROM input_requests WHERE status = 'pending' AND cluster_id IN (SELECT id FROM clusters WHERE supervisor_id = $1)";
-      }
-
-      let verificationsQuery = "SELECT COUNT(*) as count FROM field_verifications WHERE status = 'verified'";
-      if (isSupervisor) {
-         verificationsQuery = "SELECT COUNT(*) as count FROM field_verifications WHERE status = 'verified' AND cluster_id IN (SELECT id FROM clusters WHERE supervisor_id = $1)";
-      }
-
-      let salesQuery = "SELECT COALESCE(SUM(sale_amount),0) as total FROM sales";
-      // sales table doesn't have cluster_id, keeping it global or you can link via aggregator if needed
-
-      let walletQuery = "SELECT COALESCE(SUM(balance),0) as total, COALESCE(SUM(locked_balance),0) as locked FROM wallets";
-      if (isSupervisor) {
-         walletQuery = "SELECT COALESCE(SUM(balance),0) as total, COALESCE(SUM(locked_balance),0) as locked FROM wallets WHERE owner_id = $1";
-      }
-
-      let deployedQuery = "SELECT COALESCE(SUM(total_value),0) as total FROM input_requests WHERE funds_status = 'approved'";
-      if (isSupervisor) {
-         deployedQuery = "SELECT COALESCE(SUM(total_value),0) as total FROM input_requests WHERE funds_status = 'approved' AND cluster_id IN (SELECT id FROM clusters WHERE supervisor_id = $1)";
-      }
-
-      let repaymentsQuery = "SELECT COALESCE(SUM(recovered_amount),0) as recovered, COALESCE(SUM(financing_amount),0) as total FROM repayments";
-      if (isSupervisor) {
-         repaymentsQuery = "SELECT COALESCE(SUM(recovered_amount),0) as recovered, COALESCE(SUM(financing_amount),0) as total FROM repayments WHERE farmer_id IN (SELECT farmer_id FROM cluster_members WHERE cluster_id IN (SELECT id FROM clusters WHERE supervisor_id = $1))";
-      }
-
-      let distributionQuery = `SELECT 
-            COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' THEN 1 END), 0) as seed_pct,
-            COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' THEN 1 END), 0) as fert_pct
-            FROM input_requests`;
-      if (isSupervisor) {
-         distributionQuery = `SELECT 
-            COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' THEN 1 END), 0) as seed_pct,
-            COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' THEN 1 END), 0) as fert_pct
-            FROM input_requests WHERE cluster_id IN (SELECT id FROM clusters WHERE supervisor_id = $1)`;
-      }
-
-      const params = isSupervisor ? [userId] : [];
-
       const [farmers, programs, clusters, pendingInputs, verifications, sales, walletTotal, deployed, repayments, distribution] = await Promise.all([
-         client.query(farmersQuery, params),
+         client.query("SELECT COUNT(*) as count FROM vendors WHERE LOWER(role) = 'farmer'"),
          client.query("SELECT COUNT(*) as count FROM programs WHERE status = 'active'"),
-         client.query(clustersQuery, params),
-         client.query(pendingInputsQuery, params),
-         client.query(verificationsQuery, params),
-         client.query(salesQuery),
-         client.query(walletQuery, params),
-         client.query(deployedQuery, params),
-         client.query(repaymentsQuery, params),
-         client.query(distributionQuery, params)
+         client.query("SELECT COUNT(*) as count FROM clusters WHERE status = 'active'"),
+         client.query("SELECT COUNT(*) as count FROM input_requests WHERE status = 'pending'"),
+         client.query("SELECT COUNT(*) as count FROM field_verifications WHERE status = 'verified'"),
+         client.query("SELECT COALESCE(SUM(sale_amount),0) as total FROM sales"),
+         client.query("SELECT COALESCE(SUM(balance),0) as total, COALESCE(SUM(locked_balance),0) as locked FROM wallets"),
+         client.query("SELECT COALESCE(SUM(total_value),0) as total FROM input_requests WHERE funds_status = 'approved'"),
+         client.query("SELECT COALESCE(SUM(recovered_amount),0) as recovered, COALESCE(SUM(financing_amount),0) as total FROM repayments"),
+         client.query(`SELECT 
+            COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Seeds%' THEN 1 END), 0) as seed_pct,
+            COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' AND items_status = 'assigned' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN input_items::text ILIKE '%Fertilizer%' THEN 1 END), 0) as fert_pct
+            FROM input_requests`)
       ]);
       return {
          activeFarmers: parseInt(farmers.rows[0].count),
@@ -1499,11 +1363,11 @@ async function getClusterSupervision(clusterId) {
 async function upsertClusterSupervision(data) {
    const {
       cluster_id, officer_id,
-      clearing_status = 'pending', clearing_notes = null, clearing_image = null,
-      irrigation_status = 'pending', irrigation_notes = null, irrigation_image = null,
-      ridging_status = 'pending', ridging_notes = null, ridging_image = null,
-      weeding_status = 'pending', weeding_notes = null, weeding_image = null,
-      harvesting_status = 'pending', harvesting_notes = null, harvesting_image = null
+      clearing_status = 'pending', clearing_notes = null,
+      irrigation_status = 'pending', irrigation_notes = null,
+      ridging_status = 'pending', ridging_notes = null,
+      weeding_status = 'pending', weeding_notes = null,
+      harvesting_status = 'pending', harvesting_notes = null
    } = data;
 
    // Check if a row exists for this cluster
@@ -1518,26 +1382,21 @@ async function upsertClusterSupervision(data) {
       const result = await pool.query(
          `UPDATE farm_supervisions SET
             officer_id = $2,
-            clearing_status = $3::varchar,
+            clearing_status = $3,
             clearing_notes = $4,
-            clearing_updated_at = CASE WHEN clearing_status::varchar != $3::varchar THEN now() ELSE clearing_updated_at END,
-            irrigation_status = $5::varchar,
+            clearing_updated_at = CASE WHEN clearing_status != $3 THEN now() ELSE clearing_updated_at END,
+            irrigation_status = $5,
             irrigation_notes = $6,
-            irrigation_updated_at = CASE WHEN irrigation_status::varchar != $5::varchar THEN now() ELSE irrigation_updated_at END,
-            ridging_status = $7::varchar,
+            irrigation_updated_at = CASE WHEN irrigation_status != $5 THEN now() ELSE irrigation_updated_at END,
+            ridging_status = $7,
             ridging_notes = $8,
-            ridging_updated_at = CASE WHEN ridging_status::varchar != $7::varchar THEN now() ELSE ridging_updated_at END,
-            weeding_status = $9::varchar,
+            ridging_updated_at = CASE WHEN ridging_status != $7 THEN now() ELSE ridging_updated_at END,
+            weeding_status = $9,
             weeding_notes = $10,
-            weeding_updated_at = CASE WHEN weeding_status::varchar != $9::varchar THEN now() ELSE weeding_updated_at END,
-            harvesting_status = $11::varchar,
+            weeding_updated_at = CASE WHEN weeding_status != $9 THEN now() ELSE weeding_updated_at END,
+            harvesting_status = $11,
             harvesting_notes = $12,
-            harvesting_updated_at = CASE WHEN harvesting_status::varchar != $11::varchar THEN now() ELSE harvesting_updated_at END,
-            clearing_image = COALESCE($13, clearing_image),
-            irrigation_image = COALESCE($14, irrigation_image),
-            ridging_image = COALESCE($15, ridging_image),
-            weeding_image = COALESCE($16, weeding_image),
-            harvesting_image = COALESCE($17, harvesting_image),
+            harvesting_updated_at = CASE WHEN harvesting_status != $11 THEN now() ELSE harvesting_updated_at END,
             updated_at = now()
          WHERE cluster_id = $1 RETURNING *`,
          [
@@ -1546,8 +1405,7 @@ async function upsertClusterSupervision(data) {
             irrigation_status, irrigation_notes,
             ridging_status, ridging_notes,
             weeding_status, weeding_notes,
-            harvesting_status, harvesting_notes,
-            clearing_image, irrigation_image, ridging_image, weeding_image, harvesting_image
+            harvesting_status, harvesting_notes
          ]
       );
       rows = result.rows;
@@ -1561,10 +1419,9 @@ async function upsertClusterSupervision(data) {
             ridging_status, ridging_notes, ridging_updated_at,
             weeding_status, weeding_notes, weeding_updated_at,
             harvesting_status, harvesting_notes, harvesting_updated_at,
-            clearing_image, irrigation_image, ridging_image, weeding_image, harvesting_image,
             updated_at
          )
-         VALUES ($1, $2, NULL, NULL, $3, $4, now(), $5, $6, now(), $7, $8, now(), $9, $10, now(), $11, $12, now(), $13, $14, $15, $16, $17, now())
+         VALUES ($1, $2, NULL, NULL, $3, $4, now(), $5, $6, now(), $7, $8, now(), $9, $10, now(), $11, $12, now(), now())
          RETURNING *`,
          [
             cluster_id, officer_id,
@@ -1572,8 +1429,7 @@ async function upsertClusterSupervision(data) {
             irrigation_status, irrigation_notes,
             ridging_status, ridging_notes,
             weeding_status, weeding_notes,
-            harvesting_status, harvesting_notes,
-            clearing_image, irrigation_image, ridging_image, weeding_image, harvesting_image
+            harvesting_status, harvesting_notes
          ]
       );
       rows = result.rows;
@@ -1582,141 +1438,7 @@ async function upsertClusterSupervision(data) {
    return rows[0];
 }
 
-
-// ============ CLUSTER CHATS ============
-async function saveClusterChat(clusterId, senderId, message) {
-   const { rows } = await pool.query(
-      `INSERT INTO cluster_chats (cluster_id, sender_id, message)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [clusterId, senderId, message]
-   );
-   const chat = await pool.query(
-      `SELECT c.*, v.fname as sender_fname, v.lname as sender_lname, v.role as sender_role
-       FROM cluster_chats c
-       LEFT JOIN vendors v ON c.sender_id = v.id
-       WHERE c.id = $1`,
-      [rows[0].id]
-   );
-   return chat.rows[0];
-}
-async function getClusterChats(clusterId) {
-   const { rows } = await pool.query(
-      `SELECT c.*, v.fname as sender_fname, v.lname as sender_lname, v.role as sender_role
-       FROM cluster_chats c
-       LEFT JOIN vendors v ON c.sender_id = v.id
-       WHERE c.cluster_id = $1
-       ORDER BY c.created_at ASC`,
-      [clusterId]
-   );
-   return rows;
-}
-// ============ CLUSTER TRAININGS ============
-async function scheduleClusterTraining(clusterId, supervisorId, title, description, scheduledAt) {
-   const agoraChannel = `cluster_${clusterId}_${Date.now()}`;
-   const { rows } = await pool.query(
-      `INSERT INTO cluster_trainings (cluster_id, supervisor_id, title, description, scheduled_time, agora_channel)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [clusterId, supervisorId, title, description, scheduledAt, agoraChannel]
-   );
-   return rows[0];
-}
-async function getClusterTrainings(clusterId) {
-   const { rows } = await pool.query(
-      `SELECT * FROM cluster_trainings WHERE cluster_id = $1 ORDER BY scheduled_time DESC`,
-      [clusterId]
-   );
-   return rows;
-}
-async function getClusterTrainingById(trainingId) {
-   const { rows } = await pool.query(
-      `SELECT * FROM cluster_trainings WHERE id = $1`,
-      [trainingId]
-   );
-   return rows[0];
-}
-async function updateClusterTrainingStatus(trainingId, status) {
-   const { rows } = await pool.query(
-      `UPDATE cluster_trainings SET status = $1 WHERE id = $2 RETURNING *`,
-      [status, trainingId]
-   );
-   return rows[0];
-}
-// ============ PRE-HARVEST LISTINGS ============
-
-async function createPreHarvestListing(data) {
-   const { cluster_id, supervisor_id, program_id, commodity, estimated_yield_tons, offer_price_per_ton, expected_harvest_date } = data;
-   const { rows } = await pool.query(
-      `INSERT INTO pre_harvest_listings (cluster_id, supervisor_id, program_id, commodity, estimated_yield_tons, offer_price_per_ton, expected_harvest_date, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active') RETURNING *`,
-      [cluster_id, supervisor_id, program_id, commodity, estimated_yield_tons, offer_price_per_ton, expected_harvest_date]
-   );
-   return rows[0];
-}
-
-async function getPreHarvestListingsByCluster(cluster_id) {
-   const { rows } = await pool.query(
-      `SELECT phl.*, c.gps_latitude, c.gps_longitude, v.fname || ' ' || v.lname as supervisor_name
-       FROM pre_harvest_listings phl
-       LEFT JOIN clusters c ON phl.cluster_id = c.id
-       LEFT JOIN vendors v ON phl.supervisor_id = v.id
-       WHERE phl.cluster_id = $1
-       ORDER BY phl.created_at DESC`,
-      [cluster_id]
-   );
-   return rows;
-}
-
-async function getAllPreHarvestListings() {
-   const { rows } = await pool.query(
-      `SELECT phl.*, c.gps_latitude, c.gps_longitude, v.fname || ' ' || v.lname as supervisor_name
-       FROM pre_harvest_listings phl
-       LEFT JOIN clusters c ON phl.cluster_id = c.id
-       LEFT JOIN vendors v ON phl.supervisor_id = v.id
-       WHERE phl.status = 'active'
-       ORDER BY phl.created_at DESC`
-   );
-   return rows;
-}
-
-async function createForwardContract(data) {
-   const { buyer_id, pre_harvest_listing_id, quantity_tons, total_price } = data;
-   const { rows } = await pool.query(
-      `INSERT INTO forward_contracts (buyer_id, pre_harvest_listing_id, quantity_tons, total_price, escrow_status, contract_status)
-       VALUES ($1, $2, $3, $4, 'pending_deposit', 'pending_approval') RETURNING *`,
-      [buyer_id, pre_harvest_listing_id, quantity_tons, total_price]
-   );
-   return rows[0];
-}
-
-async function getForwardContractsByBuyer(buyer_id) {
-   const { rows } = await pool.query(
-      `SELECT fc.*, phl.commodity, phl.expected_harvest_date, c.gps_latitude, c.gps_longitude
-       FROM forward_contracts fc
-       JOIN pre_harvest_listings phl ON fc.pre_harvest_listing_id = phl.id
-       LEFT JOIN clusters c ON phl.cluster_id = c.id
-       WHERE fc.buyer_id = $1
-       ORDER BY fc.created_at DESC`,
-      [buyer_id]
-   );
-   return rows;
-}
-
-async function getForwardContractsForSales() {
-   const { rows } = await pool.query(
-      `SELECT fc.*, phl.commodity, phl.expected_harvest_date, COALESCE(b.name, v.company_name, v.fname || ' ' || v.lname) as buyer_name, COALESCE(b.email, v.email) as buyer_email, COALESCE(b.phone, v.phone) as buyer_phone, c.gps_latitude, c.gps_longitude
-       FROM forward_contracts fc
-       JOIN pre_harvest_listings phl ON fc.pre_harvest_listing_id = phl.id
-       LEFT JOIN buyers b ON fc.buyer_id = b.buyer_id
-       LEFT JOIN vendors v ON fc.buyer_id = v.id
-       LEFT JOIN clusters c ON phl.cluster_id = c.id
-       ORDER BY fc.created_at DESC`
-   );
-   return rows;
-}
-
 export {
-   createPreHarvestListing, getPreHarvestListingsByCluster, getAllPreHarvestListings,
-   createForwardContract, getForwardContractsByBuyer, getForwardContractsForSales,
    createWallet, getWalletByOwner, depositLockedFunds, depositToClusterWallet,
    transferClusterToFarmer, getWalletTransactions,
    createFarmerProfile, getFarmerProfileByVendor, getAllFarmerProfiles,
@@ -1739,7 +1461,6 @@ export {
    createSale, getSalesByCluster,
    createRepayment, updateRepayment,
    getPipelineStats,
-   payoutDistributor,
    getAllDistributors,
    disableBuyerAccount,
    getSalesStats,
@@ -1755,8 +1476,6 @@ export {
    getEcosystemOrderPaymentByReference, recordEcosystemPaystackVerification, confirmEcosystemOrderPayment,
    processEscrowPayment, assignOrderDistributor,
    getEcosystemOrdersByDistributor, markOrderDelivered, updateEcosystemOrderStatus,
-   getDistributorStats, confirmInputDelivery,
-   saveClusterChat, getClusterChats,
-   scheduleClusterTraining, getClusterTrainings, getClusterTrainingById, updateClusterTrainingStatus
+   getDistributorStats
 };
 

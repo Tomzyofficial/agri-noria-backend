@@ -1,5 +1,7 @@
 import "dotenv/config";
 import express from "express";
+import http from "http";
+import { Server } from "socket.io";
 
 import cors from "cors";
 
@@ -40,14 +42,16 @@ import jobsRoute from "./routes/jobs/jobs.route.js";
 import publicJobRoute from "./routes/jobs/publicJobs..route.js";
 import droneRoute from "./routes/drone/listings.route.js";
 
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 5000;
 
 const app = express()
   .use(
     cors({
       origin: [
         "http://localhost:3000",
-        "https://agri-noria-frontend.vercel.app/",
+        "http://localhost:3001",
+        "https://green-oria-agri-connect-frontend.vercel.app",
+        "https://agri-noria-frontend.vercel.app",
       ],
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -95,7 +99,41 @@ const app = express()
   .use("/api/vendor/drone", droneRoute)
   .use("/api/drone-marketplace", droneRoute);
 
-app.listen(port, () => {
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "https://green-oria-agri-connect-frontend.vercel.app",
+      "https://agri-noria-frontend.vercel.app",
+    ],
+    methods: ["GET", "POST"],
+  },
+});
+
+io.on("connection", (socket) => {
+  console.log("Client connected to socket:", socket.id);
+
+  socket.on("join_cluster", (clusterId) => {
+    socket.join(`cluster_${clusterId}`);
+    console.log(`Socket ${socket.id} joined cluster_${clusterId}`);
+  });
+
+  socket.on("leave_cluster", (clusterId) => {
+    socket.leave(`cluster_${clusterId}`);
+    console.log(`Socket ${socket.id} left cluster_${clusterId}`);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
+});
+
+app.set("io", io);
+
+server.listen(port, () => {
   console.log(`Server listening on ${port}`);
 });
 

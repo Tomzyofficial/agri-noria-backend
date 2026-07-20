@@ -149,6 +149,38 @@ videoUploadController.uploadDocument = async (req, res) => {
          },
       });
    } catch (error) {
+      return res.status(500).json({
+         success: false,
+         error: error.message || "Failed to upload document",
+      });
+   }
+};
+
+// Upload document/image without vendor authentication (for registration)
+videoUploadController.uploadPublicDocument = async (req, res) => {
+   try {
+      if (!req.file) {
+         return res.status(400).json({
+            success: false,
+            error: "No file provided",
+         });
+      }
+
+      const result = await videoUploadService.uploadDocument(req.file, {
+         public_id: `registration_doc_${Date.now()}`,
+         context: {
+            source: "vendor_registration",
+         },
+      });
+
+      return res.status(200).json({
+         success: true,
+         data: {
+            publicId: result.public_id,
+            url: result.secure_url,
+         },
+      });
+   } catch (error) {
       console.error("Error uploading document:", error);
       return res.status(500).json({
          success: false,

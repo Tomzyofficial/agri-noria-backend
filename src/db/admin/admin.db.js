@@ -108,12 +108,13 @@ async function getAllWalletTransactions(limit = 100) {
 
 // Get dashboard statistics
 async function getDashboardStats() {
-   const [vendorCount, buyerCount, agreementCount, escrowTotal, totalBalance] = await Promise.all([
+   const [vendorCount, buyerCount, agreementCount, escrowTotal, totalBalance, financeTotal] = await Promise.all([
       pool.query("SELECT COUNT(*) as count FROM vendors"),
       pool.query("SELECT COUNT(*) as count FROM buyers"),
       pool.query("SELECT COUNT(*) as count FROM buyer_agreements"),
-      pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM escrow_payments WHERE status = 'held'"),
+      pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM escrow_wallets WHERE status = 'held'"),
       pool.query("SELECT COALESCE(SUM(balance), 0) as total FROM wallets"),
+      pool.query("SELECT COALESCE(SUM(balance), 0) as total FROM finance_wallets")
    ]);
 
    return {
@@ -122,6 +123,7 @@ async function getDashboardStats() {
       total_agreements: parseInt(agreementCount.rows[0]?.count || 0),
       escrow_held: parseFloat(escrowTotal.rows[0]?.total || 0),
       total_balance: parseFloat(totalBalance.rows[0]?.total || 0),
+      finance_wallet_balance: parseFloat(financeTotal.rows[0]?.total || 0),
    };
 }
 
@@ -214,13 +216,21 @@ async function disburseFundsFromFinance(financeUserId, targetWalletId, amount, d
       await client.query("BEGIN");
 
       // Get the finance wallet
-      const fwRes = await client.query(
+      let fwRes = await client.query(
          "SELECT * FROM finance_wallets WHERE finance_user_id = $1",
          [financeUserId]
       );
 
       if (fwRes.rows.length === 0) {
-         throw new Error("Finance wallet not found for user");
+         // Auto-create with initial 5 Billion testing capital
+         await client.query(
+            "INSERT INTO finance_wallets (finance_user_id, balance, currency, status) VALUES ($1, $2, 'NGN', 'active')",
+            [financeUserId, 5000000000]
+         );
+         fwRes = await client.query(
+            "SELECT * FROM finance_wallets WHERE finance_user_id = $1",
+            [financeUserId]
+         );
       }
 
       const financeWalletId = fwRes.rows[0].id;
@@ -337,13 +347,23 @@ async function updateSystemSettings(settings) {
 }
 
 // Get institution-specific analytics for dashboard
-async function getInstitutionAnalytics() {
+async function getInstitutionAnalytics(institutionId, role) {
+   const isGovernment = role === 'government';
+   
+   // If government, see all. Otherwise, see only programs created by this institution
+   const programsFilter = isGovernment ? "" : `WHERE created_by = '${institutionId}'`;
+   
+   // If government, see all farmers. Otherwise, see only enrolled farmers
+   const farmersCountQuery = isGovernment 
+      ? `(SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem')`
+      : `(SELECT COUNT(DISTINCT farmer_id) FROM farmer_programmes WHERE program_id IN (SELECT id FROM programs WHERE created_by = '${institutionId}'))`;
+
    const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats] = await Promise.all([
       pool.query(`
          SELECT 
-            (SELECT COUNT(*) FROM programs) as active_programs,
-            (SELECT COUNT(*) FROM farmer_profiles) as total_farmers,
-            (SELECT COALESCE(SUM(target_hectares), 0) FROM programs) as total_hectares
+            (SELECT COUNT(*) FROM programs ${programsFilter}) as active_programs,
+            ${farmersCountQuery} as total_farmers,
+            (SELECT COALESCE(SUM(target_hectares), 0) FROM programs ${programsFilter}) as total_hectares
       `),
       pool.query(`
          SELECT 
@@ -416,7 +436,7 @@ async function getInstitutionPortfolio() {
          FROM repayments
       `),
       pool.query(`
-         SELECT COUNT(id) as total_farmers FROM farmer_profiles
+         SELECT COUNT(*) as total_farmers FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem'
       `)
    ]);
 
@@ -508,6 +528,69 @@ async function getInstitutionTransactions(limit = 10) {
    return rows;
 }
 
+async function getInstitutionMonitoring(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE created_by = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM programme_monitoring ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionEscrow(institutionId, role) {
+   // Fetch from the real 4-wallet escrow table!
+   let query = `
+      SELECT 
+         ew.id,
+         ew.amount,
+         ew.status,
+         ew.created_at,
+         'disbursement' as transaction_type,
+         'Held in escrow for input delivery' as description
+      FROM escrow_wallets ew
+   `;
+   
+   if (role !== 'government') {
+      // Join program_wallets to filter by institution
+      query += `
+         JOIN program_wallets pw ON ew.program_id = pw.program_id
+         WHERE pw.institution_id = '${institutionId}'
+      `;
+   }
+   
+   query += ` ORDER BY ew.created_at DESC`;
+
+   const { rows } = await pool.query(query);
+   return rows;
+}
+
+async function getInstitutionProcurement(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM procurement_orders ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionTraceability(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM traceability_logs ${filter} ORDER BY timestamp DESC`);
+   return rows;
+}
+
+async function getInstitutionReports(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE generated_by = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM institutional_reports ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionExtension(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM extension_services ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function getInstitutionNgoDistribution(institutionId, role) {
+   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
+   const { rows } = await pool.query(`SELECT * FROM ngo_distributions ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
 export {
    getAllUsers,
    getUserCountByRole,
@@ -534,5 +617,12 @@ export {
    getInstitutionPortfolio,
    getInstitutionImpact,
    getInstitutionTransactions,
+   getInstitutionMonitoring,
+   getInstitutionEscrow,
+   getInstitutionProcurement,
+   getInstitutionTraceability,
+   getInstitutionReports,
+   getInstitutionExtension,
+   getInstitutionNgoDistribution,
 };
 

@@ -1,8 +1,16 @@
--- Enum for vehicle cargo encapsulation types
-CREATE TYPE cargo_enclosure_type AS ENUM ('enclosed_box', 'open_bed', 'refrigerated');
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'cargo_enclosure_type') THEN
+        CREATE TYPE cargo_enclosure_type AS ENUM ('enclosed_box', 'open_bed', 'refrigerated');
+    END IF;
+END $$;
 
--- Enum for pricing strategy
-CREATE TYPE pricing_model_type AS ENUM ('flat_rate', 'per_km');
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'pricing_model_type') THEN
+        CREATE TYPE pricing_model_type AS ENUM ('flat_rate', 'per_km');
+    END IF;
+END $$;
 
 -- Vehicles Table
 CREATE TABLE IF NOT EXISTS vehicles (

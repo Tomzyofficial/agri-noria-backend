@@ -440,6 +440,12 @@ CREATE TABLE IF NOT EXISTS buyer_ecosystem_escrow (
    released_by UUID REFERENCES vendors(id)
 );
 
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'unpaid';
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_status VARCHAR(50) DEFAULT 'not_required';
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_confirmed_by UUID REFERENCES vendors(id);
+ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_confirmed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE buyer_ecosystem_order_items ALTER COLUMN quantity TYPE NUMERIC(10,2);
+
 -- INDEXES for Ecosystem Buyer Orders
 CREATE INDEX IF NOT EXISTS idx_eco_orders_buyer ON buyer_ecosystem_orders(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_eco_orders_status ON buyer_ecosystem_orders(status);
@@ -450,12 +456,6 @@ CREATE INDEX IF NOT EXISTS idx_eco_payments_buyer ON buyer_ecosystem_order_payme
 CREATE INDEX IF NOT EXISTS idx_eco_payments_status ON buyer_ecosystem_order_payments(status);
 CREATE INDEX IF NOT EXISTS idx_eco_payments_reference ON buyer_ecosystem_order_payments(provider_reference);
 CREATE INDEX IF NOT EXISTS idx_eco_escrow_order ON buyer_ecosystem_escrow(order_id);
-
-ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'unpaid';
-ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_status VARCHAR(50) DEFAULT 'not_required';
-ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_confirmed_by UUID REFERENCES vendors(id);
-ALTER TABLE buyer_ecosystem_orders ADD COLUMN IF NOT EXISTS finance_confirmed_at TIMESTAMP WITH TIME ZONE;
-ALTER TABLE buyer_ecosystem_order_items ALTER COLUMN quantity TYPE NUMERIC(10,2);
 
 -- STAGE 17: MARKETPLACE DATA
 CREATE TABLE IF NOT EXISTS marketplace_prices (
@@ -469,3 +469,28 @@ CREATE TABLE IF NOT EXISTS marketplace_prices (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+-- ECOSYSTEM GROUP CHAT
+CREATE TABLE IF NOT EXISTS cluster_chats (
+   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+   cluster_id UUID REFERENCES clusters(id) ON DELETE CASCADE,
+   sender_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+   sender_type VARCHAR(50) DEFAULT 'farmer', -- farmer, supervisor
+   message TEXT NOT NULL,
+   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- ECOSYSTEM TRAININGS
+CREATE TABLE IF NOT EXISTS cluster_trainings (
+   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+   cluster_id UUID REFERENCES clusters(id) ON DELETE CASCADE,
+   supervisor_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+   title VARCHAR(255) NOT NULL,
+   description TEXT,
+   scheduled_time TIMESTAMP WITH TIME ZONE,
+   agora_channel VARCHAR(255),
+   status VARCHAR(50) DEFAULT 'scheduled', -- scheduled, live, completed, cancelled
+   video_url TEXT, -- if recorded
+   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE input_requests ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'pending';
