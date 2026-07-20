@@ -107,7 +107,7 @@ export async function getVerificationStatus(email, userType) {
   };
 }
 
-// Delete verification record
+// Delete verification record (not really in use for now)
 export async function deleteVerificationRecord(email, userType) {
   const { rows } = await pool.query(
     "DELETE FROM email_verifications WHERE email = $1 AND user_type = $2 RETURNING *",

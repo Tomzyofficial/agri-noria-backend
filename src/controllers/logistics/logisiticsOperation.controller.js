@@ -212,13 +212,16 @@ logisiticsOperation.getLogisticsProvidersNearBuyer = async (req, res) => {
       throw new AppError(result.error, 404);
     }
     return res.status(200).json({ success: true, data: result.providers });
-    //  return res.status(400).json({ success: false, error: result.error });
   } catch (error) {
-    console.error("Error", error);
-    return res.status(500).json({
-      success: false,
-      error: "Internal server error occurred. Try again.",
-    });
+    return error.statusCode
+      ? res.status(error.statusCode).json({
+          success: false,
+          error: error.message || "Internal server error occurred. Try again.",
+        })
+      : res.status(500).json({
+          success: false,
+          error: "Internal server error occurred. Try again.",
+        });
   }
 };
 

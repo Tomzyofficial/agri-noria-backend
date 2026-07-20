@@ -37,18 +37,17 @@ export async function deleteFileFromCloudinary(imageUrl) {
   }
 }
 
-//   async deleteVideo(publicId) {
-//       try {
-//          const result = await cloudinary.uploader.destroy(publicId, {
-//             resource_type: "video",
-//          });
+export async function deleteFile(publicId) {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId);
 
-//          return result;
-//       } catch (error) {
-//          console.error("Error deleting video:", error);
-//          throw new Error("Failed to delete video");
-//       }
-//    }
+    console.log("delete from cloud", result);
+    return result;
+  } catch (error) {
+    console.error("Error deleting file:", error);
+    throw new Error("Failed to delete file");
+  }
+}
 
 async function uploadSingleFile(file, folder, resourceType) {
   return new Promise((resolve, reject) => {

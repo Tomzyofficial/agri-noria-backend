@@ -13,7 +13,7 @@ BEGIN
 END $$;
 
 -- Vehicles Table
-CREATE TABLE vehicles (
+CREATE TABLE IF NOT EXISTS vehicles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE, 
     title VARCHAR(255) NOT NULL,
@@ -35,3 +35,4 @@ CREATE TABLE vehicles (
 -- Indexing for fast checkout queries based on capacity and operating zones
 CREATE INDEX idx_vehicles_matching ON vehicles (status, max_weight_kg);
 CREATE INDEX idx_vehicles_regions ON vehicles USING GIN (operating_regions);
+CREATE INDEX idx_vehicles_vendor_id ON vehicles (vendor_id);

@@ -68,9 +68,34 @@ CREATE TABLE IF NOT EXISTS country_utils (
     state_name character varying NOT NULL,
     currency character varying NOT NULL
 );
--- not implemented yet
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_country_utils_vendor_id ON country_utils(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_country_utils_user_id ON country_utils(user_id);
+
+-- Vendor documents
+CREATE TABLE IF NOT EXISTS vendor_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+	business_name TEXT,
+	hot_line_phone_number TEXT,
+	address TEXT,
+	business_desc TEXT,
+    id_front_url TEXT,
+    id_front_status VARCHAR(20) DEFAULT 'pending' CHECK (id_front_status IN ('pending', 'approved', 'declined')),
+    id_front_note TEXT,
+    id_back_url TEXT,
+    id_back_status VARCHAR(20) DEFAULT 'pending' CHECK (id_back_status IN ('pending', 'approved', 'declined')),
+    id_back_note TEXT,
+    license_url TEXT,
+    license_status VARCHAR(20) DEFAULT 'pending' CHECK (license_status IN ('pending', 'approved', 'declined')),
+    license_note TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXIST vendor_documents_vendor_id ON vendor_documents(vendor_id);
+CREATE INDEX IF NOT EXIST vendor_documents_business_name ON vendor_documents(business_name);
 
 
 -- Trigger for automatically setting is_verified col in vendors table to true
@@ -99,38 +124,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Vendor documents
-CREATE TABLE IF NOT EXISTS vendor_documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-    -- ID Card (Front),
-	business_name TEXT,
-		hot_line_phone_number TEXT,
-	address TEXT,
-		business_desc TEXT,
-    id_front_url TEXT,
-    id_front_status VARCHAR(20) DEFAULT 'pending' CHECK (id_front_status IN ('pending', 'approved', 'declined')),
-    id_front_note TEXT,
-    -- ID Card (Back)
-    id_back_url TEXT,
-    id_back_status VARCHAR(20) DEFAULT 'pending' CHECK (id_back_status IN ('pending', 'approved', 'declined')),
-    id_back_note TEXT,
-    -- Business License
-    license_url TEXT,
-    license_status VARCHAR(20) DEFAULT 'pending' CHECK (license_status IN ('pending', 'approved', 'declined')),
-    license_note TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
 DROP TRIGGER IF EXISTS trg_sync_vendor_verification ON vendor_documents;
 CREATE TRIGGER trg_sync_vendor_verification
 AFTER UPDATE OF id_front_status, id_back_status, license_status
 ON vendor_documents
 FOR EACH ROW
 EXECUTE FUNCTION sync_vendor_verification();
-
-
 
 -- Vendor bank accounts
 CREATE TABLE IF NOT EXISTS vendor_bank_accounts (
@@ -142,15 +141,19 @@ CREATE TABLE IF NOT EXISTS vendor_bank_accounts (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+-- Indexes
+CREATE INDEX IF NOT EXIST vendor_bank_account_vendor_id ON vendor_bank_accounts(vendor_id);
+
+
 -- Vendor stats (simple aggregated data)
-CREATE TABLE IF NOT EXISTS vendor_stats (
-  vendor_id UUID PRIMARY KEY REFERENCES vendors(id) ON DELETE CASCADE,
-  total_listings INTEGER DEFAULT 0,
-  total_sales NUMERIC(15,2) DEFAULT 0,
-  rating NUMERIC(5,2) DEFAULT 0,
-  reviews_count INTEGER DEFAULT 0,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+-- CREATE TABLE IF NOT EXISTS vendor_stats (
+--   vendor_id UUID PRIMARY KEY REFERENCES vendors(id) ON DELETE CASCADE,
+--   total_listings INTEGER DEFAULT 0,
+--   total_sales NUMERIC(15,2) DEFAULT 0,
+--   rating NUMERIC(5,2) DEFAULT 0,
+--   reviews_count INTEGER DEFAULT 0,
+--   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+-- );
 
 -- Products table
 CREATE TABLE IF NOT EXISTS public.listings (
@@ -174,29 +177,30 @@ CREATE TABLE IF NOT EXISTS public.listings (
   attributes JSONB
 );
 
-
+-- Indexes
+CREATE INDEX IF NOT EXIST vendor_listings_vendor_id ON listings(account_id);
 
 -- Customer table
-CREATE TABLE IF NOT EXISTS buyer_orders (
-    order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    buyer_id UUID REFERENCES buyers(buyer_id) ON DELETE CASCADE,
-    fname TEXT NOT NULL,
-	 lname TEXT NOT NULL,
-	 phone TEXT NOT NULL,
-	 total_amount NUMERIC(15, 2) NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending',  -- e.g., pending, paid, shipped, delivered, cancelled
-    payment_method VARCHAR(50),             -- e.g., 'card', 'bank transfer', 'cash on delivery'
-    delivery_address TEXT NOT NULL,
-    delivery_fee NUMERIC(15, 2) NOT NULL,
-    vendor_fname TEXT NOT NULL,
-    vendor_lname TEXT NOT NULL,
-    vendor_phone TEXT NOT NULL,
-    vendor_email TEXT NOT NULL,
-    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    listing_id UUID NOT null REFERENCES listings(id),
-    quantity INT NOT null
-);
+-- CREATE TABLE IF NOT EXISTS buyer_orders (
+--     order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     buyer_id UUID REFERENCES buyers(buyer_id) ON DELETE CASCADE,
+--     fname TEXT NOT NULL,
+-- 	 lname TEXT NOT NULL,
+-- 	 phone TEXT NOT NULL,
+-- 	 total_amount NUMERIC(15, 2) NOT NULL,
+--     status VARCHAR(50) DEFAULT 'pending',  -- e.g., pending, paid, shipped, delivered, cancelled
+--     payment_method VARCHAR(50),             -- e.g., 'card', 'bank transfer', 'cash on delivery'
+--     delivery_address TEXT NOT NULL,
+--     delivery_fee NUMERIC(15, 2) NOT NULL,
+--     vendor_fname TEXT NOT NULL,
+--     vendor_lname TEXT NOT NULL,
+--     vendor_phone TEXT NOT NULL,
+--     vendor_email TEXT NOT NULL,
+--     vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     listing_id UUID NOT null REFERENCES listings(id),
+--     quantity INT NOT null
+-- );
 
 -- carts
 CREATE TABLE IF NOT EXISTS carts (
@@ -223,6 +227,10 @@ CREATE TABLE IF NOT EXISTS cart_items(
 	CONSTRAINT listing_id_fkey FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
 
+-- Indexes
+CREATE INDEX IF NOT EXIST cart_items_cart_id ON cart_items(cart_id);
+
+
 -- Reviews table
 CREATE TABLE IF NOT EXISTS reviews (
   id UUID PRIMARY KEY DEFAULT GEN_RANDOM_UUID(),
@@ -234,6 +242,10 @@ CREATE TABLE IF NOT EXISTS reviews (
   updated_at TIMESTAMP DEFAULT NOW(),
   UNIQUE (listing_id, buyer_id)  
 );
+
+-- Indexes
+CREATE INDEX IF NOT EXIST review_listing_id ON reviews(listing_id);
+CREATE INDEX IF NOT EXIST review_buyer_id ON reviews(buyer_id);
 
 -- Billing cycle enum
 DO $$
@@ -270,7 +282,6 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     features JSONB,
     popular BOOLEAN DEFAULT false
 );
-
 
 -- Paystack subscription events (for deferred webhook handling)
 CREATE TABLE IF NOT EXISTS paystack_subscription_events (
@@ -312,6 +323,14 @@ CREATE TABLE IF NOT EXISTS vendor_subscriptions (
     CONSTRAINT vendor_sub_pending_plan_id_fkey FOREIGN KEY (pending_plan_id) REFERENCES subscription_plans(id) ON DELETE SET NULL
 );
 
+-- Indexes
+CREATE INDEX IF NOT EXIST vendor_sub_vendor_id ON vendor_subscriptions(vendor_id);
+CREATE INDEX IF NOT EXIST vendor_sub_plan_id ON vendor_subscriptions(plan_id);
+CREATE INDEX IF NOT EXIST vendor_sub_pending_plan_id ON vendor_subscriptions(pending_plan_id);
+CREATE INDEX IF NOT EXISTS idx_vendor_subscriptions_customer_code ON vendor_subscriptions(paystack_customer_code);
+CREATE INDEX IF NOT EXISTS idx_vendor_subscriptions_subscription_code ON vendor_subscriptions(paystack_subscription_code);
+
+
 -- Subscription invoices
 CREATE TABLE IF NOT EXISTS subscription_invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -329,6 +348,10 @@ CREATE TABLE IF NOT EXISTS subscription_invoices (
     CONSTRAINT subscription_invoices_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES vendor_subscriptions(id) ON DELETE SET NULL
 );
 
+-- Indexes
+CREATE INDEX IF NOT EXIST idx_subscription_invoices_vendor_id ON subscription_invoices(vendor_id);
+CREATE INDEX IF NOT EXIST idx_subscription_invoices_subscription_id ON subscription_invoices(subscription_id);
+
 -- Transactions table (to track payment transactions)
 CREATE TABLE IF NOT EXISTS transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -341,15 +364,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_vendor_subscriptions_vendor_id ON vendor_subscriptions(vendor_id);
-CREATE INDEX IF NOT EXISTS idx_vendor_subscriptions_customer_code ON vendor_subscriptions(paystack_customer_code);
-CREATE INDEX IF NOT EXISTS idx_vendor_subscriptions_subscription_code ON vendor_subscriptions(paystack_subscription_code);
-CREATE INDEX IF NOT EXISTS idx_subscription_invoices_vendor_id ON subscription_invoices(vendor_id);
-CREATE INDEX IF NOT EXISTS idx_subscription_invoices_subscription_id ON subscription_invoices(subscription_id);
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_transactions_reference ON transactions(reference);
-
-
 
 -- subscription plan seed. don't worry about this
 INSERT INTO subscription_plans (plan_name, billing_cycle, amount, paystack_plan_code, features) VALUES
@@ -384,6 +400,9 @@ CREATE TABLE IF NOT EXISTS storage_facility(
    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_storage_facility_vendor_id ON storage_facility(account_id);
 
 -- Loan
 CREATE TABLE IF NOT EXISTS loans (

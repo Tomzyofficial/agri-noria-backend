@@ -92,7 +92,8 @@ const publicFarmDevelopmentController = {};
 publicFarmDevelopmentController.getProviderById = async (req, res) => {
   try {
     const { businessName } = req.params;
-    const provider = await getProviderById(businessName);
+    const convertedBusinessName = businessName.replace(/-/g, " ");
+    const provider = await getProviderById(convertedBusinessName);
 
     if (!provider) {
       return res.status(404).json({ error: "Provider not found" });
@@ -100,7 +101,7 @@ publicFarmDevelopmentController.getProviderById = async (req, res) => {
 
     return res.status(200).json(provider);
   } catch (error) {
-    console.error(error);
+    console.error(error.message);
     return res.status(500).json({ error: "Failed to fetch provider" });
   }
 };
@@ -121,7 +122,6 @@ publicFarmDevelopmentController.getServices = async (req, res) => {
 publicFarmDevelopmentController.submitBookingRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("req id", id);
     const bookingData = req.body;
     const metadata = {
       client_email: bookingData.client_email,
