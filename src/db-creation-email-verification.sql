@@ -35,17 +35,3 @@ CREATE TRIGGER trigger_cleanup_expired_verifications
 AFTER INSERT ON email_verifications
 FOR EACH ROW
 EXECUTE FUNCTION cleanup_expired_verifications();
-
--- Add email verification status to vendors table
--- ALTER TABLE vendors 
--- ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE,
--- ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP WITH TIME ZONE;
-
--- Add email verification status to buyers table  
--- ALTER TABLE buyers
--- ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE,
--- ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP WITH TIME ZONE;
-
--- Indexes for email verification status
--- CREATE INDEX IF NOT EXISTS idx_vendors_email_verified ON vendors(email_verified);
--- CREATE INDEX IF NOT EXISTS idx_buyers_email_verified ON buyers(email_verified);

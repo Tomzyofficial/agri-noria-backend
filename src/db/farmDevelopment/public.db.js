@@ -232,6 +232,7 @@ export async function getProviderById(businessName) {
       v.lname,
       v.email,
       v.phone,
+      v.is_verified,
       vd.business_name,
       vd.business_desc,
       vd.address,
@@ -241,18 +242,18 @@ export async function getProviderById(businessName) {
     LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
     LEFT JOIN farm_dev_service_listings fdsl ON fdsl.vendor_id = v.id AND fdsl.status = 'active'
     LEFT JOIN farm_dev_portfolio_projects fdpp ON fdpp.vendor_id = v.id
-    WHERE vd.business_name = $1
+    WHERE vd.business_name ILIKE $1
     GROUP BY v.id, v.fname, v.lname, v.email, v.phone, vd.business_name, vd.business_desc, vd.address
   `;
 
-  const providerResult = await pool.query(providerQuery, [businessName]);
+  //   const providerResult = await pool.query(providerQuery, [businessName]);
 
-  if (providerResult.rows.length === 0) {
-    console.error("error with providers", providerResult);
-    return null;
-  }
+  //   if (providerResult.rows.length === 0) {
+  //     console.error("error with providers");
+  //     return null;
+  //   }
 
-  const provider = providerResult.rows[0];
+  //   const provider = providerResult.rows[0];
 
   // Get services for this provider
   const servicesQuery = `
@@ -263,26 +264,31 @@ export async function getProviderById(businessName) {
     FROM farm_dev_service_listings fdsl
     LEFT JOIN vendor_documents vd ON vd.vendor_id = fdsl.vendor_id
     LEFT JOIN country_utils cu ON cu.vendor_id = fdsl.vendor_id
-    WHERE vd.business_name = $1 AND fdsl.status = 'active'
+    WHERE vd.business_name ILIKE $1 AND fdsl.status = 'active'
     ORDER BY fdsl.created_at DESC
   `;
 
-  const servicesResult = await pool.query(servicesQuery, [businessName]);
+  //   const servicesResult = await pool.query(servicesQuery, [businessName]);
 
   // Get portfolio for this provider
   const portfolioQuery = `
-    SELECT fdpp.*,
-           vd.business_name
+    SELECT fdpp.*,  vd.business_name
     FROM farm_dev_portfolio_projects fdpp
     LEFT JOIN vendor_documents vd ON vd.vendor_id = fdpp.vendor_id
-    WHERE vd.business_name = $1
+    WHERE vd.business_name ILIKE $1
     ORDER BY fdpp.completion_date DESC NULLS LAST, fdpp.created_at DESC
   `;
 
-  const portfolioResult = await pool.query(portfolioQuery, [businessName]);
+  //   const portfolioResult = await pool.query(portfolioQuery, [businessName]);
+
+  const [provider, servicesResult, portfolioResult] = await Promise.all([
+    pool.query(providerQuery, [businessName]),
+    pool.query(servicesQuery, [businessName]),
+    pool.query(portfolioQuery, [businessName]),
+  ]);
 
   return {
-    ...provider,
+    ...provider.rows[0],
     services: servicesResult.rows,
     portfolio: portfolioResult.rows,
   };

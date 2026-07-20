@@ -126,35 +126,6 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- ORDER ITEMS TABLE (Line items for each order)
--- ============================================
--- CREATE TABLE IF NOT EXISTS order_items (
---     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    
---     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    
---     product_id UUID NOT NULL,
---    --  product_type VARCHAR(30) CHECK (product_type IN ('produce', 'equipment')),
-    
---     quantity NUMERIC CHECK (quantity > 0),
---     unit_price NUMERIC(12,2) CHECK (unit_price >= 0),
-    
---     -- Packaging information
---     packaging_type VARCHAR(50), -- basket, bag, crate, etc.
---     unit_measure VARCHAR(50), -- kg, tons, pieces, etc.
-    
---     -- Product details snapshot (in case product is deleted)
---     product_name TEXT,
---     product_image TEXT,
-    
---     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
--- );
-
--- Indexes for order_items
-CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
-CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
-
--- ============================================
 -- PAYMENTS TABLE (ESCROW CORE)
 -- ============================================
 CREATE TABLE IF NOT EXISTS payments (
@@ -265,8 +236,8 @@ CREATE TABLE IF NOT EXISTS logistics_shipments (
 -- Indexes for logistics_shipments
 CREATE INDEX IF NOT EXISTS idx_logistics_shipments_order_id ON logistics_shipments(order_id);
 CREATE INDEX IF NOT EXISTS idx_logistics_shipments_company_id ON logistics_shipments(logistics_company_id);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_vehicle_id ON logistics_shipments(vehicle_id);
-CREATE INDEX IF NOT EXISTS idx_logistics_shipments_driver_id ON logistics_shipments(driver_id);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_vehicle_id ON logistics_shipments(vehicle_id);
+-- CREATE INDEX IF NOT EXISTS idx_logistics_shipments_driver_id ON logistics_shipments(driver_id);
 CREATE INDEX IF NOT EXISTS idx_logistics_shipments_status ON logistics_shipments(status);
 CREATE INDEX IF NOT EXISTS idx_logistics_shipments_tracking_number ON logistics_shipments(tracking_number);
 CREATE INDEX IF NOT EXISTS idx_logistics_shipments_delivery_otp ON logistics_shipments(delivery_otp);
@@ -545,81 +516,3 @@ BEGIN
     RETURN v_otp;
 END;
 $$ LANGUAGE plpgsql;
-
--- ============================================
--- MIGRATION: Add new columns to logistics_shipments table
--- ============================================
-DO $$
-BEGIN
-    -- Add driver and vehicle information columns
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'assigned_driver_name') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN assigned_driver_name VARCHAR(255);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'assigned_driver_phone') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN assigned_driver_phone VARCHAR(50);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'vehicle_plate_number') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN vehicle_plate_number VARCHAR(50);
-    END IF;
-    
-    -- Add pickup confirmation columns
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'pickup_confirmation') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN pickup_confirmation BOOLEAN DEFAULT false;
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'pickup_photo_url') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN pickup_photo_url TEXT;
-    END IF;
-    
-    -- Add delivery OTP columns
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'delivery_otp') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN delivery_otp VARCHAR(255);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'delivery_otp_expires_at') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN delivery_otp_expires_at TIMESTAMP WITH TIME ZONE;
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'delivery_otp_verified') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN delivery_otp_verified BOOLEAN DEFAULT false;
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'delivery_otp_verified_at') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN delivery_otp_verified_at TIMESTAMP WITH TIME ZONE;
-    END IF;
-    
-    -- Add buyer satisfaction columns
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'buyer_satisfied') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN buyer_satisfied BOOLEAN DEFAULT false;
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'buyer_satisfied_at') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN buyer_satisfied_at TIMESTAMP WITH TIME ZONE;
-    END IF;
-    
-    -- Add dispatch information columns
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'dispatch_notes') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN dispatch_notes TEXT;
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'shipment_started_at') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN shipment_started_at TIMESTAMP WITH TIME ZONE;
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'logistics_shipments' AND column_name = 'delivered_at') THEN
-        ALTER TABLE logistics_shipments ADD COLUMN delivered_at TIMESTAMP WITH TIME ZONE;
-    END IF;
-    
-    -- Create indexes for new columns
-    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_logistics_shipments_delivery_otp') THEN
-        CREATE INDEX idx_logistics_shipments_delivery_otp ON logistics_shipments(delivery_otp);
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_logistics_shipments_shipment_started_at') THEN
-        CREATE INDEX idx_logistics_shipments_shipment_started_at ON logistics_shipments(shipment_started_at);
-    END IF;
-    
-    RAISE NOTICE 'Migration completed: Added new columns to logistics_shipments table';
-END $$;

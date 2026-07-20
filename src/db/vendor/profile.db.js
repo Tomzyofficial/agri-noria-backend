@@ -8,9 +8,7 @@ export async function uploadVendorProfileImage(id, profile_image_url) {
       [id],
     );
     if (existing.rows.length > 0) {
-      const destryCloudProfileImg = await deleteFileFromCloudinary(
-        existing.rows[0].profile_image_url,
-      );
+      await deleteFileFromCloudinary(existing.rows[0].profile_image_url);
       const updated = await pool.query(
         `UPDATE vendors SET profile_image_url = $1 WHERE id = $2 RETURNING profile_image_url`,
         [profile_image_url, id],

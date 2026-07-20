@@ -129,27 +129,6 @@ emailVerificationController.verifyCode = async (req, res) => {
       });
     }
 
-    // Mark email as verified in user table
-    /*  const userRecord = await markEmailAsVerified(email, userType);
-
-      if (!userRecord) {
-         return res.status(404).json({
-            success: false,
-            error: "User not found",
-            code: "USER_NOT_FOUND",
-         });
-      }
-
-      // Send welcome email
-      try {
-         const userName = userType === "vendor" ? `${userRecord.fname} ${userRecord.lname}` : userRecord.name;
-
-         await emailService.sendWelcomeEmail(email, userName, userType);
-      } catch (welcomeError) {
-         console.error("Error sending welcome email:", welcomeError);
-         // Don't fail the verification if welcome email fails
-      } */
-
     return res.status(200).json({
       success: true,
       message: "Email verified successfully",
@@ -290,7 +269,7 @@ emailVerificationController.resendCode = async (req, res) => {
 };
 
 // Test email service (for development)
-emailVerificationController.testEmail = async (req, res) => {
+/* emailVerificationController.testEmail = async (req, res) => {
   try {
     if (process.env.NODE_ENV === "production") {
       return res.status(403).json({
@@ -315,6 +294,6 @@ emailVerificationController.testEmail = async (req, res) => {
       error: "Internal server error",
     });
   }
-};
+}; */
 
 export default emailVerificationController;

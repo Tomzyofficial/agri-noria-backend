@@ -1,11 +1,3 @@
--- Training Categories
--- CREATE TABLE IF NOT EXISTS training_categories (
---     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
---     name VARCHAR(100) UNIQUE NOT NULL,
---     description TEXT,
---     icon VARCHAR(50)
--- );
-
 -- Trainings (Main training programs)
 CREATE TABLE IF NOT EXISTS trainings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -125,7 +117,6 @@ CREATE TABLE IF NOT EXISTS training_enrollments (
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_trainings_trainer_id ON trainings(trainer_id);
--- CREATE INDEX IF NOT EXISTS idx_trainings_is_active ON trainings(is_active);
 CREATE INDEX IF NOT EXISTS idx_training_material_id ON training_materials(id);
 CREATE INDEX IF NOT EXISTS idx_training_enrollments_training_id ON training_enrollments(training_id);
 CREATE INDEX IF NOT EXISTS idx_training_enrollments_farmer_id ON training_enrollments(farmer_id);

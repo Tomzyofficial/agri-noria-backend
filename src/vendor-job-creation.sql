@@ -27,6 +27,8 @@ CREATE TABLE jobs (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_job_vendor_id ON jobs(vendor_id);
+
 CREATE TABLE job_applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -50,3 +52,7 @@ CREATE TABLE job_applications (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(job_id, email)
 );
+
+CREATE INDEX IF NOT EXISTS idx_job_applications_job_id ON job_applications(job_id);
+
+

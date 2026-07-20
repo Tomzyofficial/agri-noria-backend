@@ -32,11 +32,13 @@ import ordersRoute from "./routes/buyer/orders.route.js";
 import fieldOperationsRoute from "./routes/pipeline/field-operations.route.js";
 import commodityOperationsRoute from "./routes/vendor/commodity-operations.routes.js";
 import onboardingRoute from "./routes/vendor/onboarding.routes.js";
-import uploadRoute from "./routes/vendor/upload.routes.js"; // import emailRoute from "./routes/email-verification.routes.js";
+import uploadRoute from "./routes/vendor/upload.routes.js";
+// import emailRoute from "./routes/email-verification.routes.js";
 import listingsRoute from "./routes/farmDevelopment/listings.route.js";
 import publicFarmDevelopmentRoute from "./routes/farmDevelopment/public.route.js";
 import jobsRoute from "./routes/jobs/jobs.route.js";
 import publicJobRoute from "./routes/jobs/publicJobs..route.js";
+import droneRoute from "./routes/drone/listings.route.js";
 
 const port = process.env.PORT || 8080;
 
@@ -89,7 +91,9 @@ const app = express()
   //   .use("/api/market-place/portfolio", portfolioRoute)
   .use("/api/farm-development/public", publicFarmDevelopmentRoute)
   .use("/api/vendor/jobs", jobsRoute)
-  .use("/", publicJobRoute);
+  .use("/", publicJobRoute)
+  .use("/api/vendor/drone", droneRoute)
+  .use("/api/drone-marketplace", droneRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on ${port}`);
