@@ -2,7 +2,6 @@ import pool from "../../lib/connect.js";
 import {
   saveFileToCloudinary,
   deleteFileFromCloudinary,
-  deleteFile,
 } from "../../lib/cloudinary.img.js";
 
 export const droneListingsDb = {
@@ -38,61 +37,37 @@ export const droneListingsDb = {
     try {
       const result = await client.query(
         `
-         INSERT INTO drone_listings (
-            vendor_id,
+         INSERT INTO listings (
+            account_id,
+            role,
             listing_name,
-            manufacturer,
-            model,
-            category,
-            listing_type,
-            location,
-            quantity,
-            unit,
             description,
-            sale_price,
-            condition,
-            warranty,
-            rental_price,
-            rental_period,
-            max_payload,
-            operating_range,
-            camera_type,
-            flight_time,
-            provide_service,
-            service_type
+            price,
+            location,
+            unit,
+            available_quantity,
+            category
          )
          VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-            $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21
+            $1,$2,$3,$4,$5,$6,$7,$8,$9
          )
          RETURNING id
       `,
         [
           vendorId,
+          "drone",
           listingName,
-          manufacturer,
-          model,
-          category,
-          listingType,
-          location,
-          quantity,
-          unit,
           description,
           salePrice,
-          condition,
-          warranty,
-          rentalPrice,
-          rentalPeriod,
-          maxPayload,
-          operatingRange,
-          cameraType,
-          flightTime,
-          provideService,
-          serviceType,
+          location,
+          unit,
+          quantity,
+          category,
         ],
       );
 
       if (result.rows[0].id) {
+        console.log("saved listing id", result.rows[0].id);
         const saveFileToCloud = image
           ? await saveFileToCloudinary(image, "drones", "image")
           : null;
@@ -106,14 +81,37 @@ export const droneListingsDb = {
           : null;
 
         await client.query(
-          "UPDATE drone_listings SET image = $1, public_id = $2 WHERE id = $3",
+          "UPDATE listings SET product_image = $1, public_id = $2 WHERE id = $3",
           [imageUrl, publicId, result.rows[0].id],
+        );
+
+        await client.query(
+          "INSERT INTO drone_listing_details (listing_id, manufacturer, model, listing_type, condition, warranty, rental_price, rental_period, max_payload, operating_range, camera_type, flight_time, provide_service, service_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+          [
+            result.rows[0].id,
+            manufacturer,
+            model,
+            listingType,
+            condition,
+            warranty,
+            rentalPrice,
+            rentalPeriod,
+            maxPayload,
+            operatingRange,
+            cameraType,
+            flightTime,
+            provideService,
+            serviceType,
+          ],
         );
       }
 
       await client.query("COMMIT");
+      return true;
     } catch (error) {
-      client.query("ROLLBACK");
+      console.error("Error creating listing:", error);
+      await client.query("ROLLBACK");
+      return false;
     } finally {
       client.release();
     }
@@ -127,20 +125,10 @@ export const droneListingsDb = {
 
     const listings = await pool.query(
       `
-         SELECT dl.id, dl.listing_name, dl.status, dl.sale_price, dl.rental_price, dl.image, dl.description, cu.country_code, cu.currency FROM drone_listings dl
-         LEFT JOIN country_utils cu ON dl.vendor_id = cu.vendor_id WHERE dl.vendor_id = $1 ORDER BY dl.created_at DESC LIMIT $2 OFFSET $3
+         SELECT ls.id, ls.account_id, ls.product_image, ls.listing_name, ls.description, ls.price, ls.product_status, cu.country_code, cu.currency, dld.rental_price FROM listings ls LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id WHERE ls.account_id = $1 ORDER BY ls.id DESC LIMIT $2 OFFSET $3
       `,
       [vendorId, limit, offset],
     );
-
-    //  const total = await pool.query(
-    //    `
-    //        SELECT COUNT(*) AS count
-    //        FROM drone_listings
-    //        WHERE vendor_id=$1
-    //     `,
-    //    [vendorId],
-    //  );
 
     return {
       listings: listings.rows,
@@ -156,14 +144,49 @@ export const droneListingsDb = {
   getSingleListing: async (listingId, vendorId) => {
     const result = await pool.query(
       `
-         SELECT dl.*, cu.country_code, cu.currency
-         FROM drone_listings dl
-         LEFT JOIN country_utils cu ON dl.vendor_id = cu.vendor_id
-         WHERE dl.id = $1 AND dl.vendor_id = $2
+         SELECT
+           ls.id,
+           ls.account_id,
+           ls.role,
+           ls.product_image,
+           ls.public_id,
+           ls.listing_name,
+           ls.description,
+           ls.price,
+           ls.location,
+           ls.created_at,
+           ls.updated_at,
+           ls.product_status,
+           ls.available_quantity,
+           ls.unit,
+           ls.category,
+           cu.country_code,
+           cu.currency,
+           dld.id AS drone_detail_id,
+           dld.listing_id AS drone_listing_id,
+           dld.manufacturer,
+           dld.model,
+           dld.listing_type,
+           dld.condition,
+           dld.warranty,
+           dld.rental_price,
+           dld.rental_period,
+           dld.max_payload,
+           dld.operating_range,
+           dld.camera_type,
+           dld.flight_time,
+           dld.provide_service,
+           dld.service_type
+         FROM listings ls
+         LEFT JOIN country_utils cu ON cu.vendor_id = ls.account_id
+         LEFT JOIN drone_listing_details dld ON dld.listing_id = ls.id
+         WHERE ls.id = $1 AND ls.account_id = $2
+         LIMIT 1
       `,
       [listingId, vendorId],
     );
 
+    //   console.log(result.rows[0]);
     return result.rows[0] || null;
   },
 
@@ -201,7 +224,7 @@ export const droneListingsDb = {
       await client.query("BEGIN");
 
       const existing = await client.query(
-        "SELECT image, public_id FROM drone_listings WHERE id = $1 AND vendor_id = $2",
+        "SELECT product_image, public_id FROM listings WHERE id = $1 AND account_id = $2",
         [listingId, vendorId],
       );
 
@@ -210,7 +233,7 @@ export const droneListingsDb = {
         return null;
       }
 
-      let imageUrls = existing.rows[0].image;
+      let imageUrls = existing.rows[0].product_image;
       let publicIds = existing.rows[0].public_id;
 
       if (image?.length) {
@@ -230,45 +253,66 @@ export const droneListingsDb = {
 
       const result = await client.query(
         `
-         UPDATE drone_listings
+         UPDATE listings
          SET
-            listing_name = COALESCE($1, listing_name),
-            manufacturer = COALESCE($2, manufacturer),
-            model = COALESCE($3, model),
-            category = COALESCE($4, category),
-            listing_type = COALESCE($5, listing_type),
+            product_image = COALESCE($1, product_image),
+            public_id = COALESCE($2, public_id),
+            listing_name = COALESCE($3, listing_name),
+            description = COALESCE($4, description),
+            price = COALESCE($5, price),
             location = COALESCE($6, location),
-            quantity = COALESCE($7, quantity),
+            available_quantity = COALESCE($7, available_quantity),
             unit = COALESCE($8, unit),
-            description = COALESCE($9, description),
-            sale_price = COALESCE($10, sale_price),
-            condition = COALESCE($11, condition),
-            warranty = COALESCE($12, warranty),
-            rental_price = COALESCE($13, rental_price),
-            rental_period = COALESCE($14, rental_period),
-            max_payload = COALESCE($15, max_payload),
-            operating_range = COALESCE($16, operating_range),
-            camera_type = COALESCE($17, camera_type),
-            flight_time = COALESCE($18, flight_time),
-            provide_service = COALESCE($19, provide_service),
-            service_type = COALESCE($20, service_type),
-            image = COALESCE($21, image),
-            public_id = COALESCE($22, public_id),
+            category = COALESCE($9, category),
             updated_at = NOW()
-         WHERE id = $23 AND vendor_id = $24
-         RETURNING *
+         WHERE id = $10 AND account_id = $11
+            RETURNING *
       `,
         [
+          image?.length ? imageUrls : null,
+          image?.length ? publicIds : null,
           listingName ?? null,
-          manufacturer ?? null,
-          model ?? null,
-          category ?? null,
-          listingType ?? null,
+          description ?? null,
+          salePrice ?? null,
           location ?? null,
           quantity ?? null,
           unit ?? null,
-          description ?? null,
-          salePrice ?? null,
+          category ?? null,
+          listingId,
+          vendorId,
+        ],
+      );
+
+      if (result.rows.length === 0) {
+        console.log("failed to update listing", result.rows);
+        await client.query("ROLLBACK");
+        return null;
+      }
+
+      //  Update drone_listing_details table
+      const updateDetails = await client.query(
+        `
+         UPDATE drone_listing_details
+         SET
+            manufacturer = COALESCE($1, manufacturer),
+            model = COALESCE($2, model),
+            listing_type = COALESCE($3, listing_type),
+            condition = COALESCE($4, condition),
+            warranty = COALESCE($5, warranty),
+            rental_price = COALESCE($6, rental_price),
+            rental_period = COALESCE($7, rental_period),
+            max_payload = COALESCE($8, max_payload),
+            operating_range = COALESCE($9, operating_range),
+            camera_type = COALESCE($10, camera_type),
+            flight_time = COALESCE($11, flight_time),
+            provide_service = COALESCE($12, provide_service),
+            service_type = COALESCE($13, service_type)
+          WHERE listing_id = $14
+          RETURNING *`,
+        [
+          manufacturer ?? null,
+          model ?? null,
+          listingType ?? null,
           condition ?? null,
           warranty ?? null,
           rentalPrice ?? null,
@@ -277,17 +321,65 @@ export const droneListingsDb = {
           operatingRange ?? null,
           cameraType ?? null,
           flightTime ?? null,
-          provideServiceValue ?? null,
+          provideServiceValue,
           serviceType ?? null,
-          image?.length ? imageUrls : null,
-          image?.length ? publicIds : null,
           listingId,
-          vendorId,
         ],
       );
 
+      if (updateDetails.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+
       await client.query("COMMIT");
-      return result.rows[0];
+
+      /*  const updatedListing = await pool.query(
+        `
+         SELECT
+           ls.id,
+           ls.account_id,
+           ls.role,
+           ls.product_image,
+           ls.public_id,
+           ls.listing_name,
+           ls.description,
+           ls.price,
+           ls.location,
+           ls.created_at,
+           ls.updated_at,
+           ls.product_status,
+           ls.available_quantity,
+           ls.unit,
+           ls.category,
+           cu.country_code,
+           cu.currency,
+           dld.id AS drone_detail_id,
+           dld.listing_id AS drone_listing_id,
+           dld.manufacturer,
+           dld.model,
+           dld.listing_type,
+           dld.condition,
+           dld.warranty,
+           dld.rental_price,
+           dld.rental_period,
+           dld.max_payload,
+           dld.operating_range,
+           dld.camera_type,
+           dld.flight_time,
+           dld.provide_service,
+           dld.service_type
+         FROM listings ls
+         LEFT JOIN country_utils cu ON cu.vendor_id = ls.account_id
+         LEFT JOIN drone_listing_details dld ON dld.listing_id = ls.id
+         WHERE ls.id = $1 AND ls.account_id = $2
+         LIMIT 1
+        `,
+        [listingId, vendorId],
+      ); */
+
+      // return updatedListing.rows[0] || null;
+      return true;
     } catch (error) {
       await client.query("ROLLBACK");
       return null;
@@ -307,7 +399,7 @@ export const droneListingsDb = {
 
       // Check if product exist and belongs to the vendor
       const productCheck = await client.query(
-        "SELECT public_id FROM drone_listings WHERE id = $1 AND vendor_id = $2",
+        "SELECT public_id FROM listings WHERE id = $1 AND account_id = $2",
         [listingId, vendorId],
       );
 
@@ -325,7 +417,7 @@ export const droneListingsDb = {
         try {
           await Promise.all(
             publicId.map(async (element) => {
-              await deleteFile(element);
+              await deleteFileFromCloudinary(element);
             }),
           );
         } catch {
@@ -335,7 +427,7 @@ export const droneListingsDb = {
       }
 
       await pool.query(
-        `DELETE FROM drone_listings WHERE id = $1 AND vendor_id = $2`,
+        `DELETE FROM listings WHERE id = $1 AND account_id = $2`,
         [listingId, vendorId],
       );
 
@@ -355,7 +447,7 @@ export const droneListingsDb = {
    */
   getDashboardStats: async (vendorId) => {
     const result = await pool.query(
-      "SELECT COUNT(*) AS total, COUNT(*) FILTER(WHERE status='active') AS active FROM drone_listings WHERE vendor_id=$1",
+      "SELECT COUNT(*) AS total, COUNT(*) FILTER(WHERE product_status='active') AS active FROM listings WHERE account_id=$1",
       [vendorId],
     );
 
@@ -370,11 +462,12 @@ export const droneListingsDb = {
 
     const listings = await pool.query(
       `
-         SELECT dl.id, dl.listing_name, dl.manufacturer, dl.model, dl.category, dl.listing_type, dl.location, dl.quantity, dl.unit, dl.description, dl.sale_price, dl.condition, dl.warranty, dl.rental_price, dl.rental_period, dl.max_payload, dl.operating_range, dl.camera_type, dl.flight_time, dl.provide_service, dl.service_type, dl.image, dl.status, dl.created_at, dl.updated_at, cu.country_code, cu.currency
-         FROM drone_listings dl
-         LEFT JOIN country_utils cu ON dl.vendor_id = cu.vendor_id
-         WHERE dl.status = 'active'
-         ORDER BY dl.created_at DESC
+         SELECT ls.id, ls.listing_name, dld.manufacturer, dld.model, ls.category, dld.listing_type, ls.location, ls.available_quantity, ls.unit, ls.description, ls.price, dld.condition, dld.warranty, dld.rental_price, dld.rental_period, dld.max_payload, dld.operating_range, dld.camera_type, dld.flight_time, dld.provide_service, dld.service_type, ls.product_image, ls.product_status, ls.created_at, ls.updated_at, cu.country_code, cu.currency
+         FROM listings ls
+         LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id
+         LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id
+         WHERE ls.product_status = 'active' AND ls.role = 'drone'
+         ORDER BY ls.created_at DESC
          LIMIT $1 OFFSET $2
       `,
       [limit, offset],
@@ -383,8 +476,8 @@ export const droneListingsDb = {
     const total = await pool.query(
       `
          SELECT COUNT(*) AS count
-         FROM drone_listings
-         WHERE status = 'active'
+         FROM listings
+         WHERE product_status = 'active'
       `,
     );
 
@@ -402,10 +495,11 @@ export const droneListingsDb = {
   getPublicSingleListing: async (listingId) => {
     const result = await pool.query(
       `
-         SELECT dl.*, cu.country_code, cu.currency
-         FROM drone_listings dl
-         LEFT JOIN country_utils cu ON dl.vendor_id = cu.vendor_id
-         WHERE dl.id = $1 AND dl.status = 'active'
+         SELECT ls.id AS listing_id, ls.*, dld.*, cu.country_code, cu.currency, cu.country_name, cu.state_name
+         FROM listings ls
+         LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id
+         LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id
+         WHERE ls.id = $1 AND ls.product_status = 'active'
       `,
       [listingId],
     );

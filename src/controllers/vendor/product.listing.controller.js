@@ -43,7 +43,7 @@ productController.addProduct = async (req, res) => {
     } = req.body;
 
     // file buffer from Multer
-    const product_image = req.file;
+    const product_image = req.files?.product_image;
 
     // Validate required common fields
     const requiredFields = [
@@ -82,7 +82,7 @@ productController.addProduct = async (req, res) => {
     // upload to Cloudinary
     const productListing = await createListingWithDetails(
       payload.id,
-      payload.account_type,
+      payload.role,
       product_image,
       listing_name,
       description,
@@ -106,7 +106,7 @@ productController.addProduct = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Product listed successfully",
-      product: productListing.data,
+      data: productListing.data,
     });
   } catch (error) {
     console.error("Controller error:", error);
@@ -145,7 +145,7 @@ productController.viewItem = async (req, res) => {
     }
     //  console.log("true", itemViewOnly);
 
-    return res.status(200).json({ success: true, product: itemViewOnly });
+    return res.status(200).json({ success: true, data: itemViewOnly });
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -222,7 +222,7 @@ productController.editProduct = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Product updated successfully",
-      product: listings.data,
+      data: listings.data,
     });
   } catch (error) {
     console.error("Controller error:", error);
@@ -247,11 +247,11 @@ productController.fetchListedProducts = async (req, res) => {
 
     if (!listedItems) {
       return res
-        .status(204)
+        .status(404)
         .json({ success: false, error: "No listed produce here" });
     }
 
-    return res.status(200).json({ success: true, listedItems: listedItems });
+    return res.status(200).json({ success: true, data: listedItems });
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -273,7 +273,7 @@ productController.productsTotal = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      total: total,
+      data: total,
     });
   } catch (error) {
     return res.status(500).json({

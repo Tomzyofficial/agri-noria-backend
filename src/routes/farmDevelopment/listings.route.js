@@ -20,10 +20,7 @@ listingsRoute.get("/get-listings", listingsController.getListings);
 listingsRoute.get("/analytics", analyticsController.getAnalyticsCount);
 listingsRoute.post(
   "/create-portfolio",
-  upload.fields([
-    { name: "featured_image", maxCount: 1 },
-    { name: "gallery_images", maxCount: 5 },
-  ]),
+  upload.single("featured_image"),
   portfolioController.createPortfolioProject,
 );
 listingsRoute.get("/get-portfolios", portfolioController.getPortfolioProjects);

@@ -4,7 +4,7 @@ import pool from "../../lib/connect.js";
 export async function getAllMarketplaceProducts(country) {
   try {
     const { rows } = await pool.query(
-      `SELECT ls.id, ls.product_image, ls.listing_name, ls.price, ls.description, cu.currency, cu.country_code FROM listings ls JOIN country_utils cu ON ls.account_id = cu.vendor_id WHERE cu.country_code = $1 ORDER BY ls.id DESC`,
+      `SELECT ls.id, ls.product_image, ls.listing_name, ls.price, ls.description, cu.currency, cu.country_code FROM listings ls LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id WHERE cu.country_code = $1 AND ls.category IN ('farm_produce', 'equipment', 'food_item') AND product_status = 'active' ORDER BY ls.id DESC`,
       [country],
     );
     return rows;

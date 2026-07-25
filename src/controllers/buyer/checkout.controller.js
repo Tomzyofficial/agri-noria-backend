@@ -7,9 +7,10 @@ export async function getCheckoutData(req, res) {
   }
   try {
     const data = await getBuyerCheckoutData(buyerId);
-    //  console.log("data result", data);
+    console.log("data result", data);
     return res.json(data);
-  } catch {
+  } catch (error) {
+    console.error("Error fetching checkout data:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

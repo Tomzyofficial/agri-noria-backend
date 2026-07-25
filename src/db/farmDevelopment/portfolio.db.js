@@ -37,7 +37,7 @@ export async function createPortfolioProject(data) {
     } = data;
 
     const { rows } = await pool.query(
-      `INSERT INTO farm_dev_portfolio_projects (vendor_id, title, category, description, location, completion_date, featured_image, gallery_images,budget_range, client_type, project_duration
+      `INSERT INTO farm_dev_portfolio_projects (vendor_id, title, category, description, location, completion_date, featured_image, gallery_images, budget_range, client_type, project_duration
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,

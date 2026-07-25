@@ -1,4 +1,7 @@
-import { deleteFileFromCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 import pool from "../../lib/connect.js";
 
 export async function getListings(vendorId) {
@@ -15,6 +18,7 @@ export async function getListings(vendorId) {
 }
 
 export async function createListing(data) {
+  const client = await pool.connect();
   try {
     const {
       vendorId,
@@ -28,10 +32,8 @@ export async function createListing(data) {
       max_budget,
       duration,
       featured_image,
-      gallery_images,
     } = data;
 
-    // Generate slug
     const slug = title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -40,10 +42,10 @@ export async function createListing(data) {
     const { rows } = await pool.query(
       `INSERT INTO farm_dev_service_listings (
         vendor_id, title, slug, category, description, location, scope, 
-        price_type, min_budget, max_budget, duration, featured_image, gallery_images
+        price_type, min_budget, max_budget, duration
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id`,
       [
         vendorId,
         title,
@@ -56,14 +58,42 @@ export async function createListing(data) {
         min_budget,
         max_budget,
         duration,
-        featured_image,
-        gallery_images,
       ],
     );
-    return rows[0] || null;
+
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Failed to create listing" };
+    }
+
+    const saveFeaturedImage = featured_image
+      ? await saveFileToCloudinary(
+          featured_image,
+          "farm_dev_featured_images",
+          "image",
+        )
+      : null;
+
+    const imageUrl = saveFeaturedImage ? saveFeaturedImage.secure_url : null;
+    const publicId = saveFeaturedImage ? saveFeaturedImage.public_id : null;
+
+    if (imageUrl) {
+      await client.query(
+        "UPDATE farm_dev_service_listings SET featured_image = $1, public_id = $2 WHERE id = $3",
+        [imageUrl, publicId, rows[0].id],
+      );
+      await client.query("COMMIT");
+      return { success: true };
+    }
   } catch (error) {
     console.error("Database error in createListing:", error);
-    return null;
+    await client.query("ROLLBACK");
+    return {
+      success: false,
+      error: "Internal server error. Please try again later.",
+    };
+  } finally {
+    client.release();
   }
 }
 
@@ -82,72 +112,45 @@ export async function getListingById(listingId) {
   }
 }
 
-export async function recordListingView(listingId, ipAddress, userAgent) {
-  try {
-    await pool.query(
-      `UPDATE service_listings
-       SET views_count = views_count + 1,
-           metadata = jsonb_set(
-             metadata,
-             '{viewEvents}',
-             COALESCE(metadata->'viewEvents', '[]'::jsonb) || $2::jsonb,
-             true
-           )
-       WHERE id = $1 OR slug = $1`,
-      [
-        listingId,
-        JSON.stringify([
-          {
-            ipAddress: ipAddress || "unknown",
-            userAgent: userAgent || "unknown",
-            viewedAt: new Date().toISOString(),
-          },
-        ]),
-      ],
-    );
-    return true;
-  } catch (error) {
-    console.error("Database error in recordListingView:", error);
-    return false;
-  }
-}
-
 export async function updateListing(listingId, vendorId, updates) {
+  const {
+    title,
+    category,
+    description,
+    location,
+    scope,
+    price_type,
+    min_budget,
+    max_budget,
+    duration,
+    featured_image,
+  } = updates;
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    const existingImage = await client.query(
-      "SELECT featured_image, gallery_images FROM farm_dev_service_listings WHERE id = $1 AND vendor_id = $2 LIMIT 1",
+    const existingPublicId = await client.query(
+      "SELECT public_id FROM farm_dev_service_listings WHERE id = $1 AND vendor_id = $2 LIMIT 1",
       [listingId, vendorId],
     );
 
-    const existingGallery = existingImage.rows[0].gallery_images || [];
-
-    if (existingImage.rows.length > 0 && updates.featured_image) {
-      await deleteFileFromCloudinary(existingImage.rows[0].featured_image);
+    if (existingPublicId.rows.length > 0 && updates.featured_image) {
+      await deleteFileFromCloudinary(existingPublicId.rows[0].public_id);
     }
 
-    if (
-      Array.isArray(updates.gallery_images) &&
-      updates.gallery_images.length > 0
-    ) {
-      updates.gallery_images = [...existingGallery, ...updates.gallery_images];
-    }
+    const saveImageToCloud = featured_image
+      ? await saveFileToCloudinary(
+          featured_image,
+          "farm_dev_featured_images",
+          "image",
+        )
+      : null;
 
-    const {
-      title,
-      category,
-      description,
-      location,
-      scope,
-      price_type,
-      min_budget,
-      max_budget,
-      duration,
-      featured_image,
-      gallery_images,
-    } = updates;
+    const savedImage = saveImageToCloud ? saveImageToCloud : null;
+
+    const imageUrl = savedImage?.secure_url;
+    const publicId = savedImage?.public_id;
 
     const slug = title
       ? title
@@ -169,7 +172,7 @@ export async function updateListing(listingId, vendorId, updates) {
          max_budget = COALESCE($9, max_budget),
          duration = COALESCE($10, duration),
          featured_image = COALESCE($11, featured_image),
-         gallery_images = COALESCE($12, gallery_images),
+         public_id = COALESCE($12, public_id),
          updated_at = CURRENT_TIMESTAMP
      WHERE id = $13 AND vendor_id = $14
      RETURNING *`,
@@ -184,15 +187,17 @@ export async function updateListing(listingId, vendorId, updates) {
         min_budget,
         max_budget,
         duration,
-        featured_image,
-        gallery_images,
+        imageUrl,
+        publicId,
         listingId,
         vendorId,
       ],
     );
 
-    await client.query("COMMIT");
-    return rows[0] || null;
+    if (rows.length > 0) {
+      await client.query("COMMIT");
+      return { success: true };
+    }
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Database error in updateListing:", error);
@@ -206,19 +211,13 @@ export async function deleteListing(listingId) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existingImage = await client.query(
-      "SELECT featured_image, gallery_images FROM farm_dev_service_listings WHERE id = $1 LIMIT 1",
+    const existingPublicId = await client.query(
+      "SELECT public_id FROM farm_dev_service_listings WHERE id = $1 LIMIT 1",
       [listingId],
     );
 
-    if (existingImage.rows.length > 0) {
-      await Promise.all([
-        existingImage.rows[0].featured_image &&
-          deleteFileFromCloudinary(existingImage.rows[0].featured_image),
-        ...existingImage.rows[0].gallery_images.map((url) =>
-          deleteFileFromCloudinary(url),
-        ),
-      ]);
+    if (existingPublicId.rows.length > 0) {
+      await deleteFileFromCloudinary(existingPublicId.rows[0].public_id);
     }
     const { rows } = await client.query(
       "DELETE FROM farm_dev_service_listings WHERE id = $1 RETURNING id",
