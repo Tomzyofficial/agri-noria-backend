@@ -7,7 +7,7 @@ import {
 // Create listings
 export async function createListingWithDetails(
   account_id,
-  account_type,
+  role,
   product_image,
   listing_name,
   description,
@@ -25,24 +25,23 @@ export async function createListingWithDetails(
   try {
     await client.query("BEGIN");
 
-    let product_img = null;
-    if (product_image) {
-      product_img = await saveFileToCloudinary(
-        product_image,
-        "marketplace",
-        "image",
-      );
-    }
+    //  let product_img = null;
+    //  if (product_image) {
+    //    product_img = await saveFileToCloudinary(
+    //      product_image,
+    //      "marketplace",
+    //      "image",
+    //    );
+    //  }
 
     // Insert into unified listings table ONLY
     const listingResult = await client.query(
-      `INSERT INTO listings (account_id, account_type, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
-       RETURNING id, product_image, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes`,
+      `INSERT INTO listings (account_id, role, listing_name, description, price, location, unit_measure, available_quantity, discount, unit, category, min_quantity, attributes) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+       RETURNING id`,
       [
         account_id,
-        account_type,
-        product_img.secure_url,
+        role,
         listing_name,
         description,
         price,
@@ -56,6 +55,26 @@ export async function createListingWithDetails(
         attributes,
       ],
     );
+
+    if (listingResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Failed to create product listing" };
+    }
+
+    if (product_image) {
+      const saveImageToCloud = await saveFileToCloudinary(
+        product_image,
+        "marketplace",
+        "image",
+      );
+      const imageUrl = saveImageToCloud?.map((img) => img.secure_url);
+      const publicId = saveImageToCloud?.map((img) => img.public_id);
+
+      await client.query(
+        `UPDATE listings SET product_image = $1, public_id = $2 WHERE id = $3`,
+        [imageUrl, publicId, listingResult.rows[0].id],
+      );
+    }
 
     await client.query("COMMIT");
     return { success: true, data: listingResult.rows[0] };

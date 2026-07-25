@@ -2,9 +2,7 @@ import {
   createListing,
   deleteListing,
   getListingById,
-  //   getListingImages,
   getListings,
-  recordListingView,
   updateListing,
 } from "../../db/farmDevelopment/listings.db.js";
 import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
@@ -61,8 +59,8 @@ listingsController.createListing = async (req, res) => {
       max_budget,
       duration,
     } = req.body;
+    const featured_image = req.files?.featured_image[0];
 
-    // Validate required fields
     if (!title || !category || !description || !location) {
       return res.status(400).json({
         success: false,
@@ -71,30 +69,11 @@ listingsController.createListing = async (req, res) => {
       });
     }
 
-    const featured_image = req.files?.featured_image?.[0] || null;
-    const gallery_images = req.files?.gallery_images || [];
-
     if (!featured_image) {
       return res
         .status(400)
-        .json({ success: false, error: "Featured image is required" });
+        .json({ success: false, error: "Featured image is required HERE" });
     }
-
-    const saveFeaturedImage = featured_image
-      ? await saveFileToCloudinary(
-          featured_image,
-          "farm_dev_featured_images",
-          "image",
-        )
-      : null;
-
-    const saveGalleryImages = gallery_images.length
-      ? await saveFileToCloudinary(
-          gallery_images,
-          "farm_dev_gallery_images",
-          "image",
-        )
-      : [];
 
     try {
       // Construct the data object for the database function
@@ -110,22 +89,15 @@ listingsController.createListing = async (req, res) => {
         min_budget: min_budget ? parseInt(min_budget) : null,
         max_budget: max_budget ? parseInt(max_budget) : null,
         duration: duration || "",
-        featured_image: saveFeaturedImage?.secure_url || "",
-        gallery_images: Array.isArray(saveGalleryImages)
-          ? saveGalleryImages
-              .map((image) => image.secure_url || "")
-              .filter(Boolean)
-          : saveGalleryImages?.secure_url
-            ? [saveGalleryImages.secure_url]
-            : [],
+        featured_image,
       };
 
       const listing = await createListing(listingData);
 
-      if (!listing) {
+      if (!listing.success) {
         return res.status(500).json({
           success: false,
-          error: "Failed to create listing. Try again later.",
+          error: listing.error,
         });
       }
 
@@ -187,43 +159,17 @@ listingsController.updateListing = async (req, res) => {
     const { id } = req.params;
 
     const featured_image = req.files?.featured_image?.[0];
-    const gallery_images = req.files?.gallery_images;
-
-    let firstSave = null;
-    let sec = null;
-    firstSave = featured_image
-      ? await saveFileToCloudinary(
-          featured_image,
-          "farm_dev_featured_images",
-          "image",
-        )
-      : null;
-
-    sec = Array.isArray(gallery_images)
-      ? await saveFileToCloudinary(
-          gallery_images,
-          "farm_dev_gallery_images",
-          "image",
-        )
-      : [];
-
     const updates = {
       ...req.body,
+      featured_image,
     };
 
-    if (firstSave?.secure_url) {
-      updates.featured_image = firstSave.secure_url;
-    }
-
-    if (Array.isArray(sec) && sec.length > 0) {
-      updates.gallery_images = sec.map((img) => img.secure_url);
-    }
     if (updates.scope) {
       updates.scope = JSON.parse(updates.scope);
     }
     const listing = await updateListing(id, payload.id, updates);
 
-    if (listing.success === false) {
+    if (!listing.success) {
       return res.status(400).json({
         success: false,
         error: listing?.error || "Failed to update",
@@ -238,7 +184,7 @@ listingsController.updateListing = async (req, res) => {
     console.error("Error in updateListing controller:", error);
     return res.status(500).json({
       success: false,
-      error: "Failed to update listing",
+      error: "Internal server error. Please try again later.",
     });
   }
 };

@@ -17,31 +17,29 @@ if (process.env.CLOUDINARY_API_KEY) {
 export { cloudinary };
 
 // This function handles deleting file from the cloudinary still needs more worm.
-export async function deleteFileFromCloudinary(imageUrl) {
+// export async function deleteFileFromCloudinary(imageUrl) {
+//   try {
+//     if (!imageUrl) return { success: false, message: "No image URL provided" };
+//     // Extract public_id from the URL
+//     const parts = imageUrl.split("/");
+//     const fileName = parts.pop();
+//     const folder = parts.slice(parts.indexOf("upload") + 2).join("/");
+
+//     const publicId =
+//       folder + "/" + fileName.substring(0, fileName.lastIndexOf("."));
+//     const result = await cloudinary.uploader.destroy(publicId);
+//     return result;
+//   } catch (error) {
+//     return {
+//       success: false,
+//       error: "Failed to delete image from cloud.",
+//     };
+//   }
+// }
+
+export async function deleteFileFromCloudinary(publicId) {
   try {
-    if (!imageUrl) return { success: false, message: "No image URL provided" };
-    // Extract public_id from the URL
-    const parts = imageUrl.split("/");
-    const fileName = parts.pop();
-    const folder = parts.slice(parts.indexOf("upload") + 2).join("/");
-
-    const publicId =
-      folder + "/" + fileName.substring(0, fileName.lastIndexOf("."));
     const result = await cloudinary.uploader.destroy(publicId);
-    return result;
-  } catch (error) {
-    return {
-      success: false,
-      error: "Failed to delete image from cloud.",
-    };
-  }
-}
-
-export async function deleteFile(publicId) {
-  try {
-    const result = await cloudinary.uploader.destroy(publicId);
-
-    console.log("delete from cloud", result);
     return result;
   } catch (error) {
     console.error("Error deleting file:", error);

@@ -160,18 +160,19 @@ CREATE TABLE IF NOT EXISTS public.listings (
   id UUID PRIMARY KEY default gen_random_uuid(),
   account_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
   role character varying NOT NULL,
-  product_image character varying not null,
+  product_image TEXT[],
+  public_id TEXT[],
   listing_name character varying NOT NULL,
   description character varying NOT NULL,
-  price NUMERIC(15,2) NOT NULL,
+  price NUMERIC(15,2),
   location character varying NOT NULL,
   created_at timestamp default current_timestamp,
   updated_at timestamp default current_timestamp,
   product_status character varying not null DEFAULT 'active',
-  unit_measure character varying NOT NULL,
+  unit_measure character varying,
   available_quantity NUMERIC NOT NULL,
   discount NUMERIC(5, 2),
-  unit character varying NOT NULL,
+  unit character varying,
   category character varying NOT NULL,
   min_quantity INTEGER,
   attributes JSONB
@@ -224,7 +225,6 @@ CREATE TABLE IF NOT EXISTS cart_items(
    currency TEXT NOT NULL,
    min_quantity INTEGER,
    discount NUMERIC(5,2),
-	CONSTRAINT listing_id_fkey FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
 
 -- Indexes

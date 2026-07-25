@@ -99,16 +99,18 @@ marketplaceStorageController.submitBookingRequest = async (req, res) => {
   const { id } = req.params;
   const bookingData = req.body;
   const metadata = {
-    commodity: bookingData.commodity,
-    quantity: bookingData.quantity,
-    unit: bookingData.unit,
-    duration: bookingData.duration,
-    start_date: bookingData.start_date,
-    storage_type: bookingData.storage_type,
-    pickup_location: bookingData.pickup_location,
-    delivery_location: bookingData.delivery_location,
-    transport_date: bookingData.transport_date,
-    agreement: bookingData.agreement,
+    commodity: bookingData.commodity ?? null,
+    quantity: bookingData.quantity ?? null,
+    unit: bookingData.unit ?? null,
+    duration: bookingData.duration ?? null,
+    start_date: bookingData.start_date ?? null,
+    storage_type: bookingData.storage_type ?? null,
+    pickup_location: bookingData.pickup_location ?? null,
+    delivery_location: bookingData.delivery_location ?? null,
+    transport_date: bookingData.transport_date ?? null,
+    agreement: bookingData.agreement ?? null,
+    email: bookingData.email ?? null,
+    rentalDurationDays: bookingData.rentalDurationDays ?? null,
   };
 
   //   const validateSchema = storageQuoteRequestSchema.safeParse(bookingData);
