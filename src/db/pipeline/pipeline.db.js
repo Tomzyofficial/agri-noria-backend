@@ -67,6 +67,111 @@ async function depositToClusterWallet(walletId, amount, description, referenceId
    }
 }
 
+async function fundPersonalWallet(walletId, amount, reference) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      
+      // Idempotency check
+      const { rows: existingTx } = await client.query(
+         "SELECT id FROM wallet_transactions WHERE wallet_id = $1 AND description LIKE $2 FOR UPDATE",
+         [walletId, `%Ref: ${reference}%`]
+      );
+      if (existingTx.length > 0) {
+         await client.query("ROLLBACK");
+         const { rows: wallet } = await client.query("SELECT * FROM wallets WHERE id = $1", [walletId]);
+         return wallet[0];
+      }
+
+      const { rows: updatedWallet } = await client.query(
+         "UPDATE wallets SET balance = balance + $1, updated_at = now() WHERE id = $2 RETURNING *",
+         [amount, walletId]
+      );
+      if (updatedWallet.length === 0) {
+         throw new Error("Wallet not found");
+      }
+      await client.query(
+         `INSERT INTO wallet_transactions (wallet_id, type, amount, description, reference_id, reference_type, status)
+          VALUES ($1, 'credit', $2, $3, NULL, 'paystack_funding', 'completed')`,
+         [walletId, amount, `Wallet funding via Paystack (Ref: ${reference})`]
+      );
+      await client.query("COMMIT");
+      return updatedWallet[0];
+   } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+   } finally {
+      client.release();
+   }
+}
+
+async function fundEcosystemWallet(amount, reference, funderId) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      
+      // Get the first finance user (Platform wallet)
+      let { rows: financeUsers } = await client.query(
+         "SELECT id FROM vendors WHERE LOWER(role) IN ('finance', 'super admin', 'admin') ORDER BY created_at ASC LIMIT 1"
+      );
+      
+      if (financeUsers.length === 0) {
+         throw new Error("No platform finance user found to credit");
+      }
+      
+      let platformUserId = financeUsers[0].id;
+      
+      let { rows: financeWallet } = await client.query(
+         "SELECT id FROM finance_wallets WHERE finance_user_id = $1",
+         [platformUserId]
+      );
+      
+      let platformWalletId;
+      if (financeWallet.length === 0) {
+         let { rows: newWallet } = await client.query(
+            "INSERT INTO finance_wallets (finance_user_id) VALUES ($1) RETURNING id",
+            [platformUserId]
+         );
+         platformWalletId = newWallet[0].id;
+      } else {
+         platformWalletId = financeWallet[0].id;
+      }
+
+      // Idempotency check
+      const { rows: existingTx } = await client.query(
+         "SELECT id FROM finance_wallet_transactions WHERE finance_wallet_id = $1 AND description LIKE $2 FOR UPDATE",
+         [platformWalletId, `%Ref: ${reference}%`]
+      );
+      
+      if (existingTx.length > 0) {
+         await client.query("ROLLBACK");
+         const { rows: wallet } = await client.query("SELECT * FROM finance_wallets WHERE id = $1", [platformWalletId]);
+         return wallet[0];
+      }
+
+      // Credit the platform wallet
+      let { rows: updatedWallet } = await client.query(
+         "UPDATE finance_wallets SET balance = balance + $1, updated_at = now() WHERE id = $2 RETURNING *",
+         [amount, platformWalletId]
+      );
+      
+      // Record transaction
+      await client.query(
+         `INSERT INTO finance_wallet_transactions (finance_wallet_id, type, amount, description, status)
+          VALUES ($1, 'received_ecosystem', $2, $3, 'completed')`,
+         [platformWalletId, amount, `Ecosystem contribution via Paystack (Ref: ${reference}) from user ${funderId}`]
+      );
+      
+      await client.query("COMMIT");
+      return updatedWallet[0];
+   } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+   } finally {
+      client.release();
+   }
+}
+
 async function transferClusterToFarmer(clusterWalletId, farmerWalletId, amount, description) {
    const client = await pool.connect();
    try {
@@ -1426,14 +1531,16 @@ async function getDistributorStats(distributorId) {
 async function getPlatformWalletTotals() {
    const client = await pool.connect();
    try {
-      const [walletTotal, escrowTotal] = await Promise.all([
+      const [walletTotal, escrowTotal, financeTotal] = await Promise.all([
          client.query("SELECT COALESCE(SUM(balance),0) as balance, COALESCE(SUM(locked_balance),0) as locked FROM wallets"),
          client.query("SELECT COALESCE(SUM(amount),0) as total FROM escrow_payments WHERE status = 'held'"),
+         client.query("SELECT COALESCE(SUM(balance),0) as balance FROM finance_wallets")
       ]);
       return {
          balance: parseFloat(walletTotal.rows[0].balance),
          locked: parseFloat(walletTotal.rows[0].locked),
-         held_in_escrow: parseFloat(escrowTotal.rows[0].total)
+         held_in_escrow: parseFloat(escrowTotal.rows[0].total),
+         ecosystem_treasury: parseFloat(financeTotal.rows[0].balance)
       };
    } finally {
       client.release();
@@ -1714,11 +1821,104 @@ async function getForwardContractsForSales() {
    return rows;
 }
 
+async function transferToEcosystem(walletId, amount, description) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      
+      // Debit the sender's wallet
+      const { rows: updatedWallet } = await client.query(
+         "UPDATE wallets SET balance = balance - $1, updated_at = now() WHERE id = $2 AND balance >= $1 RETURNING *",
+         [amount, walletId]
+      );
+      
+      if (updatedWallet.length === 0) {
+         throw new Error("Insufficient balance or wallet not found");
+      }
+      
+      // Get the first finance user (Platform wallet)
+      let { rows: financeUsers } = await client.query(
+         "SELECT id FROM vendors WHERE LOWER(role) IN ('finance', 'super admin', 'admin') ORDER BY created_at ASC LIMIT 1"
+      );
+      
+      if (financeUsers.length === 0) {
+         throw new Error("No platform finance user found to credit");
+      }
+      
+      let platformUserId = financeUsers[0].id;
+      
+      let { rows: financeWallet } = await client.query(
+         "SELECT id FROM finance_wallets WHERE finance_user_id = $1",
+         [platformUserId]
+      );
+      
+      let platformWalletId;
+      if (financeWallet.length === 0) {
+         let { rows: newWallet } = await client.query(
+            "INSERT INTO finance_wallets (finance_user_id) VALUES ($1) RETURNING id",
+            [platformUserId]
+         );
+         platformWalletId = newWallet[0].id;
+      } else {
+         platformWalletId = financeWallet[0].id;
+      }
+
+      // Credit the platform wallet
+      await client.query(
+         "UPDATE finance_wallets SET balance = balance + $1, updated_at = now() WHERE id = $2",
+         [amount, platformWalletId]
+      );
+      
+      // Record sender's debit
+      await client.query(
+         `INSERT INTO wallet_transactions (wallet_id, type, amount, description, reference_type, status)
+          VALUES ($1, 'debit', $2, $3, 'ecosystem_transfer', 'completed')`,
+         [walletId, amount, description || "Transfer to Ecosystem Treasury"]
+      );
+      
+      // Record platform's credit
+      await client.query(
+         `INSERT INTO finance_wallet_transactions (finance_wallet_id, related_wallet_id, type, amount, description, status)
+          VALUES ($1, $2, 'credit', $3, $4, 'completed')`,
+         [platformWalletId, walletId, amount, description || `Received internal transfer from wallet ${walletId}`]
+      );
+      
+      await client.query("COMMIT");
+      return updatedWallet[0];
+   } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+   } finally {
+      client.release();
+   }
+}
+
+async function getEcosystemTreasuryTransactions() {
+   const client = await pool.connect();
+   try {
+      const { rows } = await client.query(`
+         SELECT 
+            ft.id, ft.amount, ft.type, ft.description, ft.status, ft.created_at,
+            COALESCE(v.fname, v2.fname) as sender_fname, 
+            COALESCE(v.lname, v2.lname) as sender_lname, 
+            COALESCE(v.role, v2.role) as sender_role
+         FROM finance_wallet_transactions ft
+         LEFT JOIN wallets w ON ft.related_wallet_id = w.id
+         LEFT JOIN vendors v ON w.owner_id = v.id
+         LEFT JOIN vendors v2 ON v2.id::text = substring(ft.description from 'from user ([a-f0-9\-]+)')
+         ORDER BY ft.created_at DESC
+      `);
+      return rows;
+   } finally {
+      client.release();
+   }
+}
+
 export {
    createPreHarvestListing, getPreHarvestListingsByCluster, getAllPreHarvestListings,
    createForwardContract, getForwardContractsByBuyer, getForwardContractsForSales,
    createWallet, getWalletByOwner, depositLockedFunds, depositToClusterWallet,
-   transferClusterToFarmer, getWalletTransactions,
+   transferClusterToFarmer, transferToEcosystem, getWalletTransactions, getEcosystemTreasuryTransactions, fundPersonalWallet, fundEcosystemWallet,
    createFarmerProfile, getFarmerProfileByVendor, getAllFarmerProfiles,
    createCluster, getAllClusters, assignFarmerToCluster, getClusterMembers, removeFarmerFromCluster, getFarmerCluster,
    getNearestClusters, getEligibleFarmersForCluster,

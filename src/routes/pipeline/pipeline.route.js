@@ -5,6 +5,7 @@ const pipelineRoute = express.Router();
 
 // Stats & Global Management (Specific routes first)
 pipelineRoute.get("/pipeline/stats/platform-wallet", pipelineController.getPlatformWalletStats);
+pipelineRoute.get("/pipeline/stats/platform-wallet/transactions", pipelineController.getPlatformWalletTransactions);
 pipelineRoute.get("/pipeline/logistics/all", pipelineController.getAllLogistics);
 pipelineRoute.post("/pipeline/logistics/update-status", pipelineController.updateLogisticsStatus);
 pipelineRoute.get("/pipeline/warehouse/inventory", pipelineController.getWarehouseInventory);
@@ -31,6 +32,9 @@ pipelineRoute.get("/pipeline/farmers", pipelineController.getAllFarmers);
 // Wallets
 pipelineRoute.get("/pipeline/wallet", pipelineController.getMyWallet);
 pipelineRoute.post("/pipeline/wallet/transfer", pipelineController.transferFunds);
+pipelineRoute.post("/pipeline/wallet/transfer/ecosystem", pipelineController.transferToEcosystem);
+pipelineRoute.post("/pipeline/wallet/fund/initialize", pipelineController.initializeWalletFunding);
+pipelineRoute.get("/pipeline/wallet/fund/verify", pipelineController.verifyWalletFunding);
 
 // Clusters
 pipelineRoute.post("/pipeline/clusters", pipelineController.createCluster);
