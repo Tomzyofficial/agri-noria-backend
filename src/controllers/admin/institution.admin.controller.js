@@ -21,7 +21,7 @@ institutionAdminController.getAnalytics = async (req, res) => {
          return res.status(403).json({ success: false, error: "Forbidden: Institutional access required" });
       }
 
-      const analytics = await getInstitutionAnalytics();
+      const analytics = await getInstitutionAnalytics(payload.id, role);
       return res.status(200).json({ success: true, data: analytics });
    } catch (error) {
       console.error("Error fetching institution analytics:", error);

@@ -1,5 +1,5 @@
 import {
-   createWallet, getWalletByOwner, depositLockedFunds, depositToClusterWallet,
+   createWallet, getWalletByOwner, depositLockedFunds, depositToClusterWallet, fundPersonalWallet, fundEcosystemWallet, transferToEcosystem, getEcosystemTreasuryTransactions,
    transferClusterToFarmer, getWalletTransactions,
    createFarmerProfile, getFarmerProfileByVendor, getAllFarmerProfiles,
    createCluster, getAllClusters, assignFarmerToCluster, getClusterMembers, removeFarmerFromCluster,
@@ -151,7 +151,10 @@ pipelineController.getMyWallet = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const walletType = req.query.type || "farmer";
+      let walletType = req.query.type || "farmer";
+      if (walletType === 'institution' && payload.role && payload.role.toLowerCase() !== 'institution') {
+         walletType = payload.role.toLowerCase();
+      }
       const ownerId = req.query.cluster_id || payload.id;
       let wallet = await getWalletByOwner(ownerId, walletType);
 
@@ -182,6 +185,115 @@ pipelineController.transferFunds = async (req, res) => {
    } catch (error) {
       console.error("Error transferring funds:", error);
       return res.status(500).json({ success: false, error: "Transfer failed" });
+   }
+};
+
+
+pipelineController.initializeWalletFunding = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { amount, target } = req.body; // target: 'personal' or 'ecosystem'
+      if (!amount || amount <= 0) return res.status(400).json({ success: false, error: "Invalid amount" });
+
+      const amount_kobo = Math.round(amount * 100);
+
+      const initPayload = {
+         email: payload.email,
+         amount: amount_kobo,
+         metadata: {
+            vendor_id: payload.id,
+            target: target || 'personal',
+            role: payload.role?.toLowerCase() || 'institution',
+            category: 'wallet_funding'
+         },
+         callback_url: `${process.env.FRONTEND_APP_URL}/ecosystem/institution/wallet?target=${target || 'personal'}`
+      };
+      console.log("Initializing Paystack transaction with payload:", initPayload);
+
+      const initResponse = await initializePaystack("/transaction/initialize", {
+         body: initPayload
+      });
+
+      return res.status(200).json({ success: true, data: initResponse.data });
+   } catch (error) {
+      console.error("Paystack init error:", error.response?.data || error.message);
+      return res.status(500).json({ success: false, error: error.message });
+   }
+};
+
+pipelineController.verifyWalletFunding = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { reference, target } = req.query;
+      if (!reference) return res.status(400).json({ success: false, error: "Missing reference" });
+
+      const verifyRes = await verifyPaystackTransaction(reference);
+      
+      if (!verifyRes.status || verifyRes.data.status !== "success") {
+         console.error("Payment verification failed on Paystack API. Response:", verifyRes);
+         return res.status(400).json({ success: false, error: "Payment verification failed" });
+      }
+
+      const amountPaid = verifyRes.data.amount / 100;
+      let walletData;
+
+      if (target === "ecosystem") {
+         walletData = await fundEcosystemWallet(amountPaid, reference, payload.id);
+      } else {
+         let wallet = await getWalletByOwner(payload.id, payload.role?.toLowerCase() || 'institution');
+         if (!wallet) {
+            wallet = await createWallet(payload.id, payload.role?.toLowerCase() || 'institution');
+         }
+         walletData = await fundPersonalWallet(wallet.id, amountPaid, reference);
+      }
+
+      console.log(`Wallet funding successful for user ${payload.id}, Amount: ₦${amountPaid}`);
+      return res.status(200).json({ success: true, data: walletData, message: "Funding successful" });
+   } catch (error) {
+      console.error("Wallet funding verification error:", error);
+      return res.status(500).json({ success: false, error: "Funding verification failed" });
+   }
+};
+
+pipelineController.transferToEcosystem = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { amount, description } = req.body;
+      if (!amount || isNaN(amount) || amount <= 0) {
+         return res.status(400).json({ success: false, error: "Invalid transfer amount" });
+      }
+
+      // Get the user's institutional wallet (or fallback dynamically like getMyWallet)
+      let walletType = req.body.wallet_type || payload.role?.toLowerCase() || 'institution';
+      if (walletType === 'institution' && payload.role && payload.role.toLowerCase() !== 'institution') {
+         walletType = payload.role.toLowerCase();
+      }
+      
+      const wallet = await getWalletByOwner(payload.id, walletType);
+      if (!wallet) {
+         return res.status(404).json({ success: false, error: "Wallet not found" });
+      }
+      
+      if (parseFloat(wallet.balance) < parseFloat(amount)) {
+         return res.status(400).json({ success: false, error: "Insufficient wallet balance" });
+      }
+
+      const updatedWallet = await transferToEcosystem(wallet.id, parseFloat(amount), description || "Wallet-to-Ecosystem Transfer");
+
+      return res.status(200).json({ 
+         success: true, 
+         data: updatedWallet, 
+         message: "Successfully transferred funds to Ecosystem Treasury" 
+      });
+   } catch (error) {
+      console.error("Transfer to ecosystem error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Transfer failed" });
    }
 };
 
@@ -1090,6 +1202,24 @@ pipelineController.getPlatformWalletStats = async (req, res) => {
    } catch (error) {
       console.error("Error fetching platform wallet stats:", error);
       return res.status(500).json({ success: false, error: "Failed to fetch stats" });
+   }
+};
+
+pipelineController.getPlatformWalletTransactions = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+      
+      const role = payload.role?.toLowerCase();
+      if (role !== "finance" && role !== "super admin" && role !== "admin") {
+         return res.status(403).json({ success: false, error: "Forbidden: Finance or Admin role required" });
+      }
+
+      const transactions = await getEcosystemTreasuryTransactions();
+      return res.status(200).json({ success: true, data: transactions });
+   } catch (error) {
+      console.error("Error fetching ecosystem treasury transactions:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch transactions" });
    }
 };
 

@@ -1,6 +1,6 @@
 import { loanRepaymentService } from "../../db/vendor/loanRepayment.db.js";
 import { upsertSubscriptionInvoice } from "../../db/vendor/sub.plans.db.js";
-import { getEcosystemOrderPaymentByReference, recordEcosystemPaystackVerification } from "../../db/pipeline/pipeline.db.js";
+import { getEcosystemOrderPaymentByReference, recordEcosystemPaystackVerification, fundEcosystemWallet, getWalletByOwner, createWallet, fundPersonalWallet } from "../../db/pipeline/pipeline.db.js";
 import pool from "../connect.js";
 const LOG = (label, data) => {
    const timestamp = new Date().toISOString();
@@ -486,6 +486,35 @@ async function handleEcosystemOrderPayment(data) {
    }
 }
 
+async function handleWalletFunding(data) {
+   const { amount, metadata, reference, status } = data;
+   if (status !== "success") return;
+   
+   const nairaAmount = amount / 100;
+   const { target, vendor_id, role } = metadata;
+   
+   if (!vendor_id) {
+      console.error("Vendor ID missing from metadata for wallet funding");
+      return;
+   }
+   
+   try {
+      if (target === "ecosystem") {
+         await fundEcosystemWallet(nairaAmount, reference, vendor_id);
+      } else {
+         let wallet = await getWalletByOwner(vendor_id, role || 'institution');
+         if (!wallet) {
+            wallet = await createWallet(vendor_id, role || 'institution');
+         }
+         await fundPersonalWallet(wallet.id, nairaAmount, reference);
+      }
+      LOG("WEBHOOK_WALLET_FUNDING_PROCESSED", { target, vendor_id, amount: nairaAmount, reference });
+   } catch (error) {
+      console.error("Error processing wallet funding:", error);
+      throw error;
+   }
+}
+
 export {
    handleSubscriptionCreated,
    handleChargeSuccess,
@@ -497,4 +526,5 @@ export {
    handleInvoiceUpdate,
    handleAggregatorEscrow,
    handleEcosystemOrderPayment,
+   handleWalletFunding
 };
