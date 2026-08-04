@@ -12,11 +12,11 @@ export async function getBuyerCheckoutData(buyerId) {
          b.buyer_id, b.name, b.email,
          ls.discount, ls.min_quantity, ls.id AS listing_id, ls.account_id AS listing_vendor_id, ls.location AS seller_pickup_address, ls.unit_measure,
          v.id AS seller_id, v.fname AS seller_fname, v.lname AS seller_lname, v.phone AS seller_phone, v.email AS seller_email
-         FROM carts c JOIN buyers b ON c.buyer_id = b.buyer_id
-          JOIN cart_items ci ON ci.cart_id = c.cart_id
-          JOIN listings ls ON ls.id = ci.listing_id
-          JOIN vendors v ON v.id = ls.account_id
-         WHERE c.buyer_id = $1 AND ls.product_status = 'active' ORDER BY c.created_at`,
+         FROM carts c LEFT JOIN buyers b ON c.buyer_id = b.buyer_id
+         LEFT JOIN cart_items ci ON ci.cart_id = c.cart_id
+         LEFT JOIN listings ls ON ls.id = ci.listing_id
+         LEFT JOIN vendors v ON v.id = ls.account_id
+         WHERE c.buyer_id = $1 AND ls.status = 'active' ORDER BY c.created_at`,
       [buyerId],
     );
 
@@ -69,7 +69,6 @@ export async function getBuyerCheckoutData(buyerId) {
         email,
       },
       vendors,
-      items: vendors.flatMap((vendor) => vendor.items),
     };
   } catch {
     return { hasItems: false };

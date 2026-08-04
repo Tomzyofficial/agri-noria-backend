@@ -1,36 +1,24 @@
-import { deleteFileFromCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 import pool from "../../lib/connect.js";
 
-export async function uploadVendorProfileImage(id, profile_image_url) {
-  try {
-    const existing = await pool.query(
-      `SELECT id, profile_image_url FROM vendors WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    if (existing.rows.length > 0) {
-      await deleteFileFromCloudinary(existing.rows[0].profile_image_url);
-      const updated = await pool.query(
-        `UPDATE vendors SET profile_image_url = $1 WHERE id = $2 RETURNING profile_image_url`,
-        [profile_image_url, id],
-      );
-      return updated.rows[0]?.profile_image_url || null;
-    }
-  } catch (error) {
-    console.error(
-      "Database error in uploadVendorProfileImage in profile db.js:",
-      error,
-    );
-    return { success: false, error: "Failed to upload profile image" };
-  }
+export async function uploadVendorProfileImage(id, profileImageUrl, publicId) {
+  const { rows } = await pool.query(
+    `UPDATE vendors SET profile_image_url = $1, public_id = $2 WHERE id = $3 RETURNING  profile_image_url`,
+    [profileImageUrl, publicId, id],
+  );
+  return rows[0].profile_image_url ?? null;
 }
 
 // Retrieve updated profile image
 export async function getUpdatedProfileImage(id) {
   const { rows } = await pool.query(
-    `SELECT profile_image_url FROM vendors WHERE id = $1`,
+    `SELECT profile_image_url, public_id FROM vendors WHERE id = $1`,
     [id],
   );
-  return rows[0]?.profile_image_url || null;
+  return rows[0] || null;
 }
 
 // Upsert vendor documents (by vendor_id) including business fields

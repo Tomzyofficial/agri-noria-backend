@@ -1,1 +1,0 @@
-const signature_forus = "whsec_5434035de37151066b38f4122aeee934bd53652be57761c3";

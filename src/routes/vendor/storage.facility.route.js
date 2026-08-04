@@ -20,6 +20,13 @@ storageRoute.get("/stats", storage_facilities.getStorageStats);
 // Get quote requests for the vendor's storage facilities
 storageRoute.get("/quote-requests", storage_facilities.getQuoteRequests);
 
+// Edit storage facility per listing id
+storageRoute.patch(
+  "/edit-item",
+  upload.single("storage_image"),
+  storage_facilities.editStorage,
+);
+
 // Update quote request status (e.g., mark as contacted)
 storageRoute.post(
   "/quote-requests/:id/update-status",
@@ -28,13 +35,6 @@ storageRoute.post(
 
 // View item for search params
 storageRoute.get("/view-item/:id", storage_facilities.viewItem);
-
-// Edit storage facility per listing id
-storageRoute.patch(
-  "/edit-item",
-  upload.single("storage_image"),
-  storage_facilities.editStorage,
-);
 
 // Delete storage facility per vendor
 storageRoute.delete("/delete-item/:id", storage_facilities.deleteStorage);

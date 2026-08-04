@@ -101,15 +101,15 @@ export const getStorageStats = async (userId) => {
 
 // Get all the quote requests for the vendor's storage facilities
 export async function getQuoteRequests(accountId) {
-  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, sf.storage_name, sf.storage_type, sf.location FROM quote_requests qr 
-    INNER JOIN storage_facility sf ON sf.id = qr.target_id WHERE sf.status = 'active' AND sf.account_id = $1 ORDER BY qr.created_at DESC LIMIT 5`;
+  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, sf.storage_name AS listing_name, sf.storage_type FROM quote_requests qr 
+    INNER JOIN storage_facility sf ON sf.id = qr.target_id WHERE sf.account_id = $1 ORDER BY qr.created_at DESC LIMIT 5`;
 
   const allQuoteRequestQuery = `SELECT qr.id AS quote_request_id, qr.target_id, qr.full_name,
       qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, sf.storage_name,
        sf.storage_type, sf.location
        FROM quote_requests qr
        INNER JOIN storage_facility sf ON sf.id = qr.target_id
-       WHERE sf.status = 'active' AND sf.account_id = $1
+       WHERE sf.account_id = $1
        ORDER BY qr.created_at DESC`;
 
   const [quoteRequestsResult, allQuoteRequestsResult] = await Promise.all([
@@ -132,8 +132,8 @@ export async function updateQuoteRequestStatus(
 ) {
   try {
     const { rows } = await pool.query(
-      `UPDATE quote_requests  SET status = $1 FROM
-         storage_facility sf  WHERE sf.id = quote_requests.target_id AND quote_requests.id = $2 AND sf.account_id = $3
+      `UPDATE quote_requests SET status = $1 FROM
+         storage_facility sf WHERE sf.id = quote_requests.target_id AND quote_requests.id = $2 AND sf.account_id = $3
          RETURNING *`,
       [status, quoteRequestId, accountId],
     );

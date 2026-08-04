@@ -1,5 +1,9 @@
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
-import { droneListingsDb } from "../../db/drone/listings.db.js";
+import {
+  droneListingsDb,
+  getQuoteRequests,
+  updateQuoteRequestStatus,
+} from "../../db/drone/listings.db.js";
 import { AppError } from "../../utils/AppError.js";
 
 const droneController = {};
@@ -42,11 +46,13 @@ droneController.getVendorInventory = async (req, res) => {
       page,
       limit,
     );
-
     res.status(200).json({ success: true, data: getInventory });
   } catch (error) {
     console.error("error occurred", error);
-    return res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: "Internal server error. Try again later.",
+    });
   }
 };
 
@@ -67,7 +73,7 @@ droneController.getSingleListing = async (req, res) => {
     }
     return res.status(200).json({ success: true, data: getSingle });
   } catch (error) {
-    console.log("erro", error);
+    console.log("error", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -176,6 +182,57 @@ droneController.getPublicSingleListing = async (req, res) => {
   } catch (error) {
     console.error("Error fetching public drone listing:", error);
     return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+droneController.getQuoteRequests = async (req, res) => {
+  const payload = await verifyVendorToken(req);
+  if (!payload) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  const getQuote = await getQuoteRequests(payload.id);
+  if (!getQuote) {
+    return res
+      .status(404)
+      .json({ success: false, error: "No quote requests found" });
+  }
+  return res.status(200).json({
+    success: true,
+    quoteRequests: getQuote.quoteRequests,
+    allQuoteRequests: getQuote.allQuoteRequests,
+  });
+};
+
+droneController.updateQuoteRequestStatus = async (req, res) => {
+  try {
+    const payload = await verifyVendorToken(req);
+    if (!payload) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const { id: requestId } = req.params;
+    const status = "contacted";
+
+    const updatedQuoteRequest = await updateQuoteRequestStatus(
+      requestId,
+      status,
+      payload.id,
+    );
+    if (!updatedQuoteRequest?.success || !updatedQuoteRequest?.data) {
+      return res.status(404).json({
+        success: false,
+        error: updatedQuoteRequest?.error || "Quote request not found",
+      });
+    }
+
+    return res
+      .status(200)
+      .json({ success: true, data: updatedQuoteRequest.data });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error. Try again.",
+    });
   }
 };
 

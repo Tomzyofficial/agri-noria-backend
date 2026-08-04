@@ -1,7 +1,7 @@
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'cargo_enclosure_type') THEN
-        CREATE TYPE cargo_enclosure_type AS ENUM ('enclosed_box', 'open_bed', 'refrigerated');
+         CREATE TYPE cargo _enclosure_type AS ENUM ('enclosed_box', 'open_bed', 'refrigerated');
     END IF;
 END $$;
 
@@ -26,10 +26,11 @@ CREATE TABLE IF NOT EXISTS vehicles (
     operating_regions TEXT[] NOT NULL, -- PostgreSQL array to store multiple states/zones
     pricing_model pricing_model_type NOT NULL,
     rate_amount NUMERIC(12, 2) NOT NULL CHECK (rate_amount >= 0),
-    images TEXT[] DEFAULT '{}', -- Array of image URLs hosted on S3/Cloudinary
+    image TEXT[] DEFAULT '{}', -- Array of image URLs hosted on S3/Cloudinary
     status VARCHAR(50) DEFAULT 'available' CHECK (status IN ('available', 'in_transit', 'maintenance')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    public_id TEXT[]
 );
 
 -- Indexing for fast checkout queries based on capacity and operating zones

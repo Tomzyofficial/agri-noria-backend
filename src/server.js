@@ -17,8 +17,8 @@ import checkoutRoute from "./routes/buyer/checkout.route.js";
 import subPlansRoute from "./routes/vendor/sub.plans.route.js";
 import storageRoute from "./routes/vendor/storage.facility.route.js";
 import webhookRoute from "./routes/webhooks/paystack.webhook.route.js";
-import loanRoute from "./routes/vendor/loan.route.services.js";
-import adminRoute from "./routes//admin.loan.route.js";
+// import loanRoute from "./routes/vendor/not-in-useloan.route.services.js";
+// import adminRoute from "./routes/not-in-useadmin.loan.route.js";
 import trainingRoute from "./routes/vendor/training.route.js";
 import superAdminRoute from "./routes/admin/super.admin.route.js";
 import institutionAdminRoute from "./routes/admin/institution.admin.route.js";
@@ -72,11 +72,11 @@ const app = express()
   .use("/api/vendor", webhookRoute)
   .use("/api/vendor/subscription", subPlansRoute)
   .use("/api/vendor/storage", storageRoute)
-  .use("/api/vendor/loan", loanRoute)
+  //   .use("/api/vendor/loan", loanRoute)
   .use("/api/aggregator", aggregatorRoute)
   .use("/api/vendor/training", trainingRoute)
   .use("/api/vendor", trainingMaterialRoutes)
-  .use("/", adminRoute)
+  //   .use("/", adminRoute)
   .use("/api", superAdminRoute)
   .use("/api/admin/institution", institutionAdminRoute)
   .use("/api", programsRoute)

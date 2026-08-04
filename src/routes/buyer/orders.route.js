@@ -1,7 +1,7 @@
 import express from "express";
 import {
   createOrderController,
-  getOrderByIdController,
+  //   getOrderByIdController,
   getBuyerOrdersController,
   getSellerOrdersController,
   updateOrderStatusController,
@@ -23,14 +23,14 @@ ordersRoute.get("/orders/stats", getBuyerOrderStatsController);
 // Get orders by buyer ID
 ordersRoute.get("/orders", getBuyerOrdersController);
 
-// Get seller order statistics (must be before /seller/:seller_id)
+// Get seller order statistics
 ordersRoute.get("/orders/seller/stats", getSellerOrderStatsController);
 
 // Get orders by seller ID
-ordersRoute.get("/orders/seller/:seller_id", getSellerOrdersController);
+ordersRoute.get("/orders/seller", getSellerOrdersController);
 
 // Get order by ID (parameterized - AFTER specific routes)
-ordersRoute.get("/orders/:id", getOrderByIdController);
+// ordersRoute.get("/orders/:id", getOrderByIdController);
 
 // Update order status
 ordersRoute.put("/orders/:id/status", updateOrderStatusController);

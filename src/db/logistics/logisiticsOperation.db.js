@@ -12,15 +12,16 @@ export async function addVehicle({
   operating_regions,
   pricing_model,
   rate_amount,
-  images,
+  image,
+  publicId,
 }) {
   try {
     const queryText = `
       INSERT INTO vehicles (
         vendor_id, title, vehicle_type, license_plate, cargo_type,
         max_weight_kg, volume_cubic_meters, base_location, operating_regions,
-        pricing_model, rate_amount, images
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        pricing_model, rate_amount, image, public_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *;
     `;
 
@@ -36,7 +37,8 @@ export async function addVehicle({
       operating_regions,
       pricing_model,
       rate_amount,
-      images,
+      image,
+      publicId,
     ]);
 
     return { success: true, vehicle: result.rows[0] };
@@ -49,17 +51,17 @@ export async function addVehicle({
 }
 
 // Get vehicles for vendor dashboard
-export async function getVehicles(vendorId) {
+export async function getVehicles(vendorId, page = 1, limit = 10) {
+  const offset = (page - 1) * limit;
   try {
     const queryText = `
       SELECT v.*, cu.country_code, cu.vendor_id, cu.currency FROM vehicles AS v
-      LEFT JOIN country_utils AS cu ON v.vendor_id = cu.vendor_id WHERE v.vendor_id = $1;
+      LEFT JOIN country_utils AS cu ON v.vendor_id = cu.vendor_id WHERE v.vendor_id = $1 ORDER BY v.id DESC LIMIT $2 OFFSET $3;
     `;
-    const result = await pool.query(queryText, [vendorId]);
-    return { success: true, vehicles: result.rows };
+    const result = await pool.query(queryText, [vendorId, limit, offset]);
+    return { listings: result.rows, page, limit };
   } catch (error) {
     return {
-      success: false,
       error: error.message || "failed to send",
     };
   }
@@ -82,15 +84,14 @@ export async function getListedVehicles({
         veh.operating_regions,
         veh.pricing_model,
         veh.rate_amount,
-        veh.images,
+        veh.image,
         veh.status,
         cu.country_code,
         cu.currency
       FROM vehicles veh
       LEFT JOIN country_utils cu ON cu.vendor_id = veh.vendor_id
       WHERE cu.country_code = $1
-      ORDER BY
-        CASE COALESCE(veh.status, 'available')
+      ORDER BY CASE COALESCE(veh.status, 'available')
           WHEN 'available' THEN 0
           WHEN 'in_transit' THEN 1
           WHEN 'maintenance' THEN 2
@@ -101,7 +102,7 @@ export async function getListedVehicles({
     `;
 
     // Used when fetching details for a specific vehicle on the public marketplace listing page
-    const vehicleByIdQuery = `SELECT veh.id, veh.vendor_id, veh.title, veh.vehicle_type, veh.cargo_type, veh.max_weight_kg, veh.volume_cubic_meters, veh.base_location, veh.operating_regions, veh.pricing_model, veh.rate_amount, veh.images, veh.status, v.fname, v.lname, vd.business_name, cu.currency, cu.country_code FROM vehicles veh LEFT JOIN vendors v ON veh.vendor_id = v.id LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id LEFT JOIN country_utils cu ON cu.vendor_id = veh.vendor_id WHERE veh.id = $1;`;
+    const vehicleByIdQuery = `SELECT veh.id, veh.vendor_id, veh.title, veh.vehicle_type, veh.cargo_type, veh.max_weight_kg, veh.volume_cubic_meters, veh.base_location, veh.operating_regions, veh.pricing_model, veh.rate_amount, veh.image, veh.status, v.fname, v.lname, vd.business_name, cu.currency, cu.country_code FROM vehicles veh LEFT JOIN vendors v ON veh.vendor_id = v.id LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id LEFT JOIN country_utils cu ON cu.vendor_id = veh.vendor_id WHERE veh.id = $1;`;
 
     const [vehicleResult, vehicleByIdResult] = await Promise.all([
       pool.query(vehicleQuery, [country_code, limit, offset]),
@@ -134,7 +135,7 @@ export async function getLogisticsProvidersNearBuyer(address) {
   try {
     const searchTerm = address?.trim();
     const queryText = `SELECT veh.id, veh.vendor_id, veh.title, veh.vehicle_type, veh.cargo_type, veh.max_weight_kg, veh.base_location, veh.operating_regions,
-    veh.volume_cubic_meters, veh.pricing_model, veh.rate_amount, veh.images, veh.status, v.email AS logistics_provider_email, v.id AS logistics_provider_id FROM vehicles veh LEFT JOIN vendors v
+    veh.volume_cubic_meters, veh.pricing_model, veh.rate_amount, veh.image, veh.status, v.email AS logistics_provider_email, v.id AS logistics_provider_id FROM vehicles veh LEFT JOIN vendors v
     ON veh.vendor_id = v.id WHERE EXISTS (
     SELECT 1 FROM unnest(string_to_array(lower($1), ' ')) AS keyword WHERE lower(veh.base_location) LIKE '%' || keyword || '%' OR EXISTS (SELECT 1 FROM unnest(veh.operating_regions) AS region WHERE lower(region) LIKE '%' || keyword || '%')) ORDER BY veh.id;`;
     const result = await pool.query(queryText, [searchTerm]);
@@ -159,14 +160,18 @@ export async function getLogisticsProvidersNearBuyer(address) {
   }
 }
 
+// const LOGISTICS_ORDERS_BASE_JOIN = `
+//   FROM orders o
+//   INNER JOIN vehicles veh
+//     ON (o.metadata->'logistics_provider'->>'vehicle_id')::uuid = veh.id
+//   LEFT JOIN buyers b ON o.buyer_id = b.buyer_id
+//   LEFT JOIN vendors v ON o.seller_id = v.id
+//   WHERE veh.vendor_id = $1
+// `;
+
 const LOGISTICS_ORDERS_BASE_JOIN = `
-  FROM orders o
-  INNER JOIN vehicles veh
-    ON (o.metadata->'logistics_provider'->>'vehicle_id')::uuid = veh.id
-  LEFT JOIN buyers b ON o.buyer_id = b.buyer_id
-  LEFT JOIN vendors v ON o.seller_id = v.id
-  WHERE veh.vendor_id = $1
-`;
+   FROM orders
+   WHERE metadata->'logistics_provider' @> jsonb_build_object('logistics_vendor_id', $1::text)`;
 
 /** Orders assigned to this logistics partner via vehicle metadata */
 export async function getOrdersByLogisticsVendorId(
@@ -178,7 +183,7 @@ export async function getOrdersByLogisticsVendorId(
 
   if (status) {
     params.push(status);
-    statusClause = ` AND o.status = $${params.length}`;
+    statusClause = ` AND status = $${params.length}`;
   }
 
   params.push(limit, offset);
@@ -186,23 +191,12 @@ export async function getOrdersByLogisticsVendorId(
   const offsetIdx = params.length;
 
   const query = `
-    SELECT
-      o.*,
-      b.name AS buyer_name,
-      b.email AS buyer_email,
-      v.fname AS seller_fname,
-      v.lname AS seller_lname,
-      v.email AS seller_email,
-      veh.id AS vehicle_id,
-      veh.title AS vehicle_title,
-      veh.vehicle_type,
-      veh.rate_amount AS vehicle_rate_amount
-    ${LOGISTICS_ORDERS_BASE_JOIN}
-    ${statusClause}
-    ORDER BY o.created_at DESC
-    LIMIT $${limitIdx} OFFSET $${offsetIdx}
-  `;
-
+     SELECT id, currency, country_code, status, delivery_address, created_at
+     ${LOGISTICS_ORDERS_BASE_JOIN}
+      ${statusClause}
+      ORDER BY created_at DESC
+      LIMIT $${limitIdx} OFFSET $${offsetIdx} 
+     `;
   const result = await pool.query(query, params);
   return result.rows;
 }
@@ -211,21 +205,18 @@ export async function getOrdersByLogisticsVendorId(
 export async function getLogisticsOrderStats(vendorId) {
   const query = `
     SELECT
-      o.metadata->'item_breakdown'->0->>'country_code' AS country_code,
-      o.metadata->'item_breakdown'->0->>'currency' AS currency,
+     country_code, currency,
       COUNT(*)::int AS total_orders,
-      COUNT(*) FILTER (WHERE o.status = 'pending')::int AS pending_orders,
-      COUNT(*) FILTER (WHERE o.status = 'paid')::int AS paid_orders,
-      COUNT(*) FILTER (WHERE o.status = 'processing')::int AS processing_orders,
-      COUNT(*) FILTER (WHERE o.status = 'in_transit')::int AS in_transit_orders,
-      COUNT(*) FILTER (WHERE o.status = 'delivered')::int AS delivered_orders,
-      COUNT(*) FILTER (WHERE o.status = 'completed')::int AS completed_orders,
-      COUNT(*) FILTER (WHERE o.status = 'declined')::int AS declined_orders,
-      COUNT(*) FILTER (WHERE o.status = 'refunded')::int AS refunded_orders,
-      COALESCE(SUM(o.delivery_fee), 0)::numeric AS total_delivery_revenue
+      COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_orders,
+      COUNT(*) FILTER (WHERE status = 'paid')::int AS paid_orders,
+      COUNT(*) FILTER (WHERE status = 'in_transit')::int AS in_transit_orders,
+      COUNT(*) FILTER (WHERE status = 'delivered')::int AS delivered_orders,
+      COUNT(*) FILTER (WHERE status = 'completed')::int AS completed_orders,
+      COUNT(*) FILTER (WHERE status = 'declined')::int AS declined_orders,
+      COUNT(*) FILTER (WHERE status = 'refunded')::int AS refunded_orders,
+      COALESCE(SUM((metadata->'amount_breakdown'->>'delivery_fee')::numeric), 0) AS total_delivery_revenue
     ${LOGISTICS_ORDERS_BASE_JOIN}
-    GROUP BY o.metadata->'item_breakdown'->0->>'country_code',
-      o.metadata->'item_breakdown'->0->>'currency'
+    GROUP BY country_code, currency
   `;
 
   const result = await pool.query(query, [vendorId]);
@@ -582,7 +573,7 @@ export async function getOrderDataForEmails(orderId) {
 }
 
 export async function getQuoteRequests(vendorId) {
-  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, veh.title as vehicle_title, veh.base_location FROM quote_requests qr 
+  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, veh.title as title FROM quote_requests qr 
     INNER JOIN vehicles veh ON veh.id = qr.target_id WHERE veh.vendor_id = $1 ORDER BY qr.created_at DESC LIMIT 5`;
 
   const allQuoteRequestQuery = `SELECT qr.id AS quote_request_id, qr.target_id, qr.full_name,

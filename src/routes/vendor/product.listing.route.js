@@ -15,23 +15,17 @@ productListingRoute.get(
   productController.fetchListedProducts,
 );
 
-// View item for search params
-productListingRoute.get(
-  "/vendor/products/view-item/:id",
-  productController.viewItem,
-);
-
 // Edit product per listing id
 productListingRoute.patch(
   "/vendor/products/edit-item",
-  upload.single("product_image"),
+  upload.fields([{ name: "image", maxCount: 5 }]),
   productController.editProduct,
 );
 
 // Create a new product
 productListingRoute.post(
   "/vendor/products/add-item",
-  upload.fields([{ name: "product_image", maxCount: 5 }]),
+  upload.fields([{ name: "image", maxCount: 5 }]),
   productController.addProduct,
 );
 
@@ -39,6 +33,12 @@ productListingRoute.post(
 productListingRoute.delete(
   "/vendor/products/delete-item/:id",
   productController.deleteProduct,
+);
+
+// View item for search params
+productListingRoute.get(
+  "/vendor/products/view-item/:id",
+  productController.viewItem,
 );
 
 export default productListingRoute;
