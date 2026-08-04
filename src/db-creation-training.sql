@@ -4,23 +4,19 @@ CREATE TABLE IF NOT EXISTS trainings (
     trainer_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
-
     thumbnail TEXT,
-
     agora_channel_name VARCHAR(255) UNIQUE NOT NULL,
-
     scheduled_at TIMESTAMP NOT NULL,
-
     duration_minutes INTEGER NOT NULL,
-
     max_participants INTEGER,
-
-    status VARCHAR(50) DEFAULT 'UPCOMING',
-
+    status VARCHAR(50) DEFAULT 'Upcoming',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP,
-    ended_at TIMESTAMP
+    ended_at TIMESTAMP,
+    public_id TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_trainings_trainer_id ON trainings(trainer_id);
+
 
 CREATE TABLE IF NOT EXISTS training_materials (
    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -34,6 +30,7 @@ CREATE TABLE IF NOT EXISTS training_materials (
    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
    category TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_training_material_id ON training_materials(id);
 
 
 -- Live Sessions
@@ -70,17 +67,14 @@ CREATE TABLE IF NOT EXISTS training_materials (
 -- Enrollments (Users enrolled in trainings) should be farmers
 CREATE TABLE IF NOT EXISTS training_enrollments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
     training_id UUID NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
-
-    farmer_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-
+    trainee_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
     attended BOOLEAN DEFAULT FALSE,
-
     enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    UNIQUE(training_id, farmer_id)
+    UNIQUE(training_id, trainee_id)
 );
+CREATE INDEX IF NOT EXISTS idx_training_enrollments_training_id ON training_enrollments(training_id);
+CREATE INDEX IF NOT EXISTS idx_training_enrollments_trainee_id ON training_enrollments(trainee_id);
 
 -- Live Session Participants
 -- CREATE TABLE IF NOT EXISTS live_session_participants (
@@ -115,13 +109,9 @@ CREATE TABLE IF NOT EXISTS training_enrollments (
 --     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 -- );
 
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_trainings_trainer_id ON trainings(trainer_id);
-CREATE INDEX IF NOT EXISTS idx_training_material_id ON training_materials(id);
-CREATE INDEX IF NOT EXISTS idx_training_enrollments_training_id ON training_enrollments(training_id);
 
-ALTER TABLE training_enrollments ADD COLUMN IF NOT EXISTS farmer_id UUID REFERENCES vendors(id) ON DELETE CASCADE;
-CREATE INDEX IF NOT EXISTS idx_training_enrollments_farmer_id ON training_enrollments(farmer_id);
+-- ALTER TABLE training_enrollments ADD COLUMN IF NOT EXISTS farmer_id UUID REFERENCES vendors(id) ON DELETE CASCADE;
+
 
 -- Insert default training categories
 -- INSERT INTO training_categories (name, description, icon) VALUES

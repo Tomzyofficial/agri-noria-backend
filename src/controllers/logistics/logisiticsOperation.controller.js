@@ -43,8 +43,9 @@ const ORDER_STATUSES = [
 ];
 
 function isLogisticsPartner(payload) {
-  const type = payload?.role?.toLowerCase?.();
-  return type === "logistics";
+  const role = payload?.role?.toLowerCase?.();
+  const workspace = payload?.workspace?.toLowerCase();
+  return role === "logistics" && workspace === "marketplace";
 }
 
 logisiticsOperation.addVehicle = async (req, res) => {
@@ -67,6 +68,8 @@ logisiticsOperation.addVehicle = async (req, res) => {
       rate_amount,
     } = req.body;
 
+    const image = req.files.image;
+
     // Parse operating_regions if it's a JSON string
     let parsedOperatingRegions = operating_regions;
     if (typeof operating_regions === "string") {
@@ -77,10 +80,9 @@ logisiticsOperation.addVehicle = async (req, res) => {
         console.log("Error here", e.message);
       }
     }
-    const images = req.file;
 
     let validate = vehicleUploadSchema.safeParse({
-      images,
+      image,
       title,
       vehicle_type,
       license_plate,
@@ -101,15 +103,13 @@ logisiticsOperation.addVehicle = async (req, res) => {
       }
     }
     const imagesToCloudinary = await saveFileToCloudinary(
-      images,
+      image,
       "logistics_vehicle",
       "image",
     );
-    if (!imagesToCloudinary?.secure_url) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Image upload failed." });
-    }
+
+    const imageUrl = imagesToCloudinary?.map((image) => image.secure_url);
+    const publicId = imagesToCloudinary?.map((image) => image.public_id);
     const result = await addVehicle({
       vendor_id: payload.id,
       title,
@@ -122,7 +122,8 @@ logisiticsOperation.addVehicle = async (req, res) => {
       operating_regions: parsedOperatingRegions,
       pricing_model,
       rate_amount,
-      images: [imagesToCloudinary.secure_url],
+      image: imageUrl,
+      publicId,
     });
     if (result.success) {
       return res.status(200).json({ success: true, data: result });
@@ -141,11 +142,10 @@ logisiticsOperation.getVehicles = async (req, res) => {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
   try {
-    const result = await getVehicles(payload.id);
-    if (result.success) {
-      return res.status(200).json({ success: true, data: result.vehicles });
-    }
-    return res.status(400).json({ success: false, error: result.error });
+    const { limit } = req.query;
+    const { page } = req.query;
+    const result = await getVehicles(payload.id, page, limit);
+    return res.status(200).json({ success: true, data: result });
   } catch (error) {
     console.error("Error", error);
     return res.status(500).json({ success: false, error: error.message });
@@ -228,8 +228,7 @@ logisiticsOperation.getLogisticsProvidersNearBuyer = async (req, res) => {
 // Dashboard: order counts by status for the logged-in logistics partner
 logisiticsOperation.getLogisticsOrderStats = async (req, res) => {
   const payload = await verifyVendorToken(req);
-
-  if (!payload?.id) {
+  if (!payload) {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
@@ -256,7 +255,7 @@ logisiticsOperation.getLogisticsOrderStats = async (req, res) => {
 logisiticsOperation.getLogisticsOrders = async (req, res) => {
   const payload = await verifyVendorToken(req);
 
-  if (!payload?.id) {
+  if (!payload) {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 

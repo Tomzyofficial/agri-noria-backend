@@ -10,8 +10,8 @@ export async function createPayment(paymentData) {
     payment_provider,
     provider_reference,
     provider_payment_code,
-    status = "pending",
-    escrow_status = "held",
+    status,
+    escrow_status,
     payment_method,
     metadata = {},
   } = paymentData;

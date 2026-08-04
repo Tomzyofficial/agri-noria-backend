@@ -21,11 +21,14 @@ CREATE TABLE IF NOT EXISTS vendors (
   is_suspended BOOLEAN DEFAULT false,
   workspace TEXT,
   role TEXT,
-  total_capacity_mt NUMERIC(10,2) DEFAULT 0,
-  onboarding_level INTEGER DEFAULT 0
+  company_name VARCHAR(255),
+  onboarding_level INTEGER DEFAULT 0,
+  approval_status VARCHAR(50) DEFAULT 'approved',
+  public_id TEXT
+--   total_capacity_mt NUMERIC(10,2) DEFAULT 0,
+--   onboarding_level INTEGER DEFAULT 0
 );
 
--- Users table (core profile)
 CREATE TABLE IF NOT EXISTS public.buyers (
     buyer_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,
@@ -160,7 +163,7 @@ CREATE TABLE IF NOT EXISTS public.listings (
   id UUID PRIMARY KEY default gen_random_uuid(),
   account_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
   role character varying NOT NULL,
-  product_image TEXT[],
+  image TEXT[],
   public_id TEXT[],
   listing_name character varying NOT NULL,
   description character varying NOT NULL,
@@ -168,7 +171,7 @@ CREATE TABLE IF NOT EXISTS public.listings (
   location character varying NOT NULL,
   created_at timestamp default current_timestamp,
   updated_at timestamp default current_timestamp,
-  product_status character varying not null DEFAULT 'active',
+  status character varying not null DEFAULT 'active',
   unit_measure character varying,
   available_quantity NUMERIC NOT NULL,
   discount NUMERIC(5, 2),
@@ -405,50 +408,50 @@ CREATE TABLE IF NOT EXISTS storage_facility(
 CREATE INDEX IF NOT EXISTS idx_storage_facility_vendor_id ON storage_facility(account_id);
 
 -- Loan
-CREATE TABLE IF NOT EXISTS loans (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    vendor_id UUID NOT NULL REFERENCES vendors (id) ON DELETE CASCADE,
-    org_name TEXT NOT NULL,
-    years_in_operation INTEGER NOT NULL,
-    amount NUMERIC(12,2) NOT NULL,
-    repay_amount NUMERIC(12,2),
-    repay_period INTEGER NOT NULL, 
-    monthly_revenue NUMERIC(12,2) NOT NULL,
-    farm_size NUMERIC(10,2),
-    primary_crop TEXT,
-    inv_type TEXT,
-    total_capacity INTEGER,
-    current_utilization INTEGER,
-    storage_type TEXT,
-    farmers_served INTEGER,
-   --  pending, approved, rejected, active
-    status VARCHAR(20) DEFAULT 'pending', 
-    supporting_doc TEXT NOT NULL,
-    bank_statement TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    interest_rate NUMERIC(5,2) DEFAULT 10.00,
-    monthly_installment NUMERIC(12,2),
-    amount_paid NUMERIC(12,2) DEFAULT 0,
-    disbursed_at TIMESTAMP,
-    approved_at TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS vendor_loan_idx ON loans(vendor_id);
+-- CREATE TABLE IF NOT EXISTS loans (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     vendor_id UUID NOT NULL REFERENCES vendors (id) ON DELETE CASCADE,
+--     org_name TEXT NOT NULL,
+--     years_in_operation INTEGER NOT NULL,
+--     amount NUMERIC(12,2) NOT NULL,
+--     repay_amount NUMERIC(12,2),
+--     repay_period INTEGER NOT NULL, 
+--     monthly_revenue NUMERIC(12,2) NOT NULL,
+--     farm_size NUMERIC(10,2),
+--     primary_crop TEXT,
+--     inv_type TEXT,
+--     total_capacity INTEGER,
+--     current_utilization INTEGER,
+--     storage_type TEXT,
+--     farmers_served INTEGER,
+--    --  pending, approved, rejected, active
+--     status VARCHAR(20) DEFAULT 'pending', 
+--     supporting_doc TEXT NOT NULL,
+--     bank_statement TEXT NOT NULL,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     interest_rate NUMERIC(5,2) DEFAULT 10.00,
+--     monthly_installment NUMERIC(12,2),
+--     amount_paid NUMERIC(12,2) DEFAULT 0,
+--     disbursed_at TIMESTAMP,
+--     approved_at TIMESTAMP
+-- );
+-- CREATE INDEX IF NOT EXISTS vendor_loan_idx ON loans(vendor_id);
 
 -- Loan payments table
-CREATE TABLE IF NOT EXISTS loan_payments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    loan_id UUID REFERENCES loans(id) ON DELETE CASCADE,
-    amount NUMERIC(12,2) NOT NULL,
-    paystack_reference TEXT UNIQUE,
-    payment_method TEXT DEFAULT 'paystack',
-    paid_at TIMESTAMP DEFAULT NOW(),
-    created_at TIMESTAMP DEFAULT NOW()
-);
+-- CREATE TABLE IF NOT EXISTS loan_payments (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     loan_id UUID REFERENCES loans(id) ON DELETE CASCADE,
+--     amount NUMERIC(12,2) NOT NULL,
+--     paystack_reference TEXT UNIQUE,
+--     payment_method TEXT DEFAULT 'paystack',
+--     paid_at TIMESTAMP DEFAULT NOW(),
+--     created_at TIMESTAMP DEFAULT NOW()
+-- );
 
 -- not yet created this
-CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id);
-CREATE INDEX IF NOT EXISTS idx_loan_payments_reference ON loan_payments(paystack_reference); 
+-- CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id);
+-- CREATE INDEX IF NOT EXISTS idx_loan_payments_reference ON loan_payments(paystack_reference); 
 
 
 CREATE TABLE IF NOT EXISTS quote_requests (

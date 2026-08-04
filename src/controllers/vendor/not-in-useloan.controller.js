@@ -1,7 +1,7 @@
 import {
   createNewApplication,
   getAllApplications,
-} from "../../db/vendor/loan.db.js";
+} from "../../db/vendor/not-in-useloan.db.js";
 import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
 // import { initializePaystack, verifyPaystackTransaction } from "../../services/paystack/paystack.service.js";
 import {

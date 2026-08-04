@@ -7,7 +7,10 @@ import {
   createListingWithDetails,
   deleteProduct,
 } from "../../db/vendor/product.listing.db.js";
-import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 
 const productController = {};
 
@@ -42,9 +45,6 @@ productController.addProduct = async (req, res) => {
       attributes,
     } = req.body;
 
-    // file buffer from Multer
-    const product_image = req.files?.product_image;
-
     // Validate required common fields
     const requiredFields = [
       "listing_name",
@@ -78,12 +78,20 @@ productController.addProduct = async (req, res) => {
         });
       }
     }
+    const saveFileToCloud = await saveFileToCloudinary(
+      req.files.image,
+      "marketplace",
+      "image",
+    );
+    const imageUrl = saveFileToCloud?.map((img) => img.secure_url);
+    const publicId = saveFileToCloud?.map((img) => img.public_id);
 
     // upload to Cloudinary
     const productListing = await createListingWithDetails(
       payload.id,
       payload.role,
-      product_image,
+      imageUrl,
+      publicId,
       listing_name,
       description,
       price,
@@ -98,6 +106,7 @@ productController.addProduct = async (req, res) => {
     );
 
     if (!productListing.success) {
+      await deleteFileFromCloudinary(publicId);
       return res.status(400).json({
         success: false,
         error: productListing.error || "Failed to create product listing",
@@ -135,15 +144,11 @@ productController.viewItem = async (req, res) => {
     }
 
     const itemViewOnly = await filterItemForSearchParams(payload.id, productId);
-    //  console.log("items", itemViewOnly);
-
-    if (!itemViewOnly) {
-      // console.log("not true", itemViewOnly);
+    if (!itemViewOnly.length === 0) {
       return res
         .status(404)
         .json({ success: false, error: "Product not founds" });
     }
-    //  console.log("true", itemViewOnly);
 
     return res.status(200).json({ success: true, data: itemViewOnly });
   } catch (error) {
@@ -178,8 +183,7 @@ productController.editProduct = async (req, res) => {
       attributes,
     } = req.body;
 
-    const product_image = req.file;
-
+    const product_image = req.files?.image;
     // Parse attributes if sent as string
     let parsedAttributes = attributes;
     if (typeof attributes === "string") {
@@ -242,8 +246,9 @@ productController.fetchListedProducts = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    // Fetch listed items based on account id
-    const listedItems = await fetchListedItems(payload.id);
+    const { page } = req.query;
+    const { limit } = req.query;
+    const listedItems = await fetchListedItems(payload.id, page, limit);
 
     if (!listedItems) {
       return res
@@ -253,6 +258,7 @@ productController.fetchListedProducts = async (req, res) => {
 
     return res.status(200).json({ success: true, data: listedItems });
   } catch (error) {
+    console.log(error);
     return res.status(500).json({
       success: false,
       error: `Error occurred: ${error}`,
@@ -293,7 +299,7 @@ productController.deleteProduct = async (req, res) => {
 
   try {
     const { id: productId } = req.params;
-    const deleteResult = await deleteProduct(productId, payload);
+    const deleteResult = await deleteProduct(productId, payload.id);
 
     if (!deleteResult || !deleteResult.success) {
       return res.status(400).json({

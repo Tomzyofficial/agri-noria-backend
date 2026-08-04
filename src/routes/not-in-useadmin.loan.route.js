@@ -1,5 +1,8 @@
 import express from "express";
-import { disburseLoanController, getLoans } from "../controllers/admin.loan.controller.js";
+import {
+  disburseLoanController,
+  getLoans,
+} from "../controllers/not-in-useadmin.loan.controller.js";
 const adminRoute = express.Router();
 
 adminRoute.post("/api/loan/:loanId/disburse", disburseLoanController);

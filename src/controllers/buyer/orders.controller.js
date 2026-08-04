@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   createOrder,
-  getOrderById,
+  //   getOrderById,
   getOrdersByBuyerId,
   getOrdersBySellerId,
   updateOrderStatus,
@@ -42,6 +42,18 @@ const orderSchema = z.object({
     )
     .min(1, "At least one item is required"),
 });
+
+const ORDER_STATUSES = [
+  "pending",
+  "paid",
+  "shipped",
+  "in_transit",
+  "delivered",
+  "completed",
+  "declined",
+  "cancelled",
+  "refunded",
+];
 
 /** Matches checkout summary: subtotal + delivery (rate_amount) - discount */
 function calculateCheckoutAmounts(cart, rate_amount) {
@@ -92,7 +104,7 @@ export async function createOrderController(req, res) {
       email,
       phone,
       currency,
-      // Logistics provider fields from selectedLogistics
+      country_code,
       id: vehicle_id,
       title: vehicle_title,
       vendor_id: logistics_vendor_id,
@@ -102,8 +114,6 @@ export async function createOrderController(req, res) {
       operating_regions,
       pricing_model,
       logistics_provider_email,
-      // Other logistics fields
-      // ...rest
     } = req.body;
 
     // Validate required fields
@@ -111,12 +121,6 @@ export async function createOrderController(req, res) {
       return res
         .status(400)
         .json({ success: false, error: "Buyer ID is required" });
-    }
-
-    if (!vendor?.seller_id) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Seller ID is required" });
     }
 
     if (!address) {
@@ -148,35 +152,35 @@ export async function createOrderController(req, res) {
       calculateCheckoutAmounts(cart, rate_amount);
 
     // Prepare order items
-    const items = cart.map((item) => ({
-      product_id: item.product_id,
-      // product_type: "produce", // Default to produce, can be determined from product
-      quantity: item.quantity,
-      listing_location: item.listing_location,
-      unit_price: item.price,
-      packaging_type: item.unit_measure,
-      unit_measure: item.unit_measure,
-      product_name: item.listing_name,
-      product_image: item.product_image,
-      country_code: item.country_code,
-      currency: item.currency,
-    }));
+    //  const items = cart.map((item) => ({
+    //    product_id: item.product_id,
+    //    quantity: item.quantity,
+    //    listing_location: item.listing_location,
+    //    unit_price: item.price,
+    //    packaging_type: item.unit_measure,
+    //    unit_measure: item.unit_measure,
+    //    product_name: item.listing_name,
+    //    product_image: item.product_image,
+    //    country_code: item.country_code,
+    //    currency: item.currency,
+    //  }));
 
-    // Prepare metadata with buyer info, seller info, and logistics details
+    //  const vendorInfo = vendor.map((v) => ({
+    //    seller_id: v.seller_id,
+    //    seller_fname: v.seller_fname,
+    //    seller_lname: v.seller_lname,
+    //    seller_email: v.seller_email,
+    //    seller_phone: v.seller_phone,
+    //  }));
+
     const metadata = {
       buyer_info: {
         fname,
         lname,
         phone,
-        currency,
         email,
       },
-      vendor_info: {
-        seller_fname: vendor.seller_fname,
-        seller_lname: vendor.seller_lname,
-        seller_email: vendor.seller_email,
-        seller_phone: vendor.seller_phone,
-      },
+      seller_breakdown: vendor,
       logistics_provider: {
         vehicle_id,
         vehicle_title,
@@ -194,27 +198,20 @@ export async function createOrderController(req, res) {
         delivery_fee,
         total_amount,
       },
-      item_breakdown: items,
-      // ...rest
+      // item_breakdown: items,
     };
 
-    // Create order — total_amount is the exact Paystack charge (NGN, major units)
     const order = await createOrder({
       buyer_id: buyerId,
-      seller_id: vendor.seller_id,
       total_amount,
       currency,
+      country_code,
       fulfillment_type: "delivery",
       delivery_address: address,
       delivery_fee,
       notes: `Order from ${fname} ${lname}. Phone: ${phone}`,
       metadata,
     });
-
-    // Create order items
-    //  if (items && items.length > 0) {
-    //    await createOrderItems(order.id, items);
-    //  }
 
     res.status(201).json({
       success: true,
@@ -233,53 +230,49 @@ export async function createOrderController(req, res) {
     console.error("Error creating order:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create order",
-      error: error.message,
+      error: "Failed to place your order. PLease try again later",
     });
   }
 }
 
 // Get order by ID
-export async function getOrderByIdController(req, res) {
-  try {
-    const { id } = req.params;
-    const payload = await verifyBuyerToken(req);
+// export async function getOrderByIdController(req, res) {
+//   try {
+//     const { id } = req.params;
+//     const payload = await verifyBuyerToken(req);
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Order ID is required",
-      });
-    }
+//     if (!id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Order ID is required",
+//       });
+//     }
 
-    const result = await getOrderById(id, payload.buyer_id);
-    if (!result) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    console.error("Error getting order:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get order",
-      error: error.message,
-    });
-  }
-}
+//     const result = await getOrderById(id, payload.buyer_id);
+//     if (!result) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Order not found",
+//       });
+//     }
+//     res.status(200).json({
+//       success: true,
+//       data: result,
+//     });
+//   } catch (error) {
+//     console.error("Error getting order:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get order",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get orders by buyer ID
 export async function getBuyerOrdersController(req, res) {
   const payload = await verifyBuyerToken(req);
   try {
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
-
     if (!payload) {
       return res.status(400).json({
         success: false,
@@ -287,7 +280,22 @@ export async function getBuyerOrdersController(req, res) {
       });
     }
 
-    const orders = await getOrdersByBuyerId(payload.buyer_id, limit, offset);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const status = req.query.status?.trim();
+
+    if (status && !ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Allowed: ${ORDER_STATUSES.join(", ")}`,
+      });
+    }
+
+    const orders = await getOrdersByBuyerId(payload.buyer_id, {
+      status,
+      limit,
+      offset,
+    });
 
     res.status(200).json({
       success: true,
@@ -302,8 +310,7 @@ export async function getBuyerOrdersController(req, res) {
     console.error("Error getting buyer orders:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to get buyer orders",
-      error: error.message,
+      error: "Failed to retrieve orders. ",
     });
   }
 }
@@ -311,18 +318,30 @@ export async function getBuyerOrdersController(req, res) {
 // Get orders by seller ID
 export async function getSellerOrdersController(req, res) {
   try {
-    const { seller_id } = req.params;
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
-
-    if (!seller_id) {
-      return res.status(400).json({
+    const payload = await verifyVendorToken(req);
+    if (!payload) {
+      return res.status(401).json({
         success: false,
-        message: "Seller ID is required",
+        message: "Unauthorized",
       });
     }
 
-    const orders = await getOrdersBySellerId(seller_id, limit, offset);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const status = req.query.status?.trim();
+
+    if (status && !ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Allowed: ${ORDER_STATUSES.join(", ")}`,
+      });
+    }
+
+    const orders = await getOrdersBySellerId(payload.id, {
+      status: status,
+      limit,
+      offset,
+    });
 
     res.status(200).json({
       success: true,
@@ -337,8 +356,7 @@ export async function getSellerOrdersController(req, res) {
     console.error("Error getting seller orders:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to get seller orders",
-      error: error.message,
+      error: "Failed to retrieve orders",
     });
   }
 }

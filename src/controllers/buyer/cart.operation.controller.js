@@ -78,7 +78,6 @@ buyerCartController.cartMerge = async (req, res) => {
     // We delete and re-insert cleanly to avoid duplication
     await pool.query("DELETE FROM cart_items WHERE cart_id = $1", [cartId]);
     for (const item of mergedCart) {
-      console.log("Inserting item into DB cart:", item);
       await pool.query(
         `INSERT INTO cart_items (cart_id, description, listing_name, price, product_image, quantity, listing_id, country_code, currency, min_quantity, discount)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
