@@ -10,14 +10,15 @@ import {
   updateVendorBasicInfo,
 } from "../../db/vendor/profile.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
-import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 import pool from "../../lib/connect.js";
 
 const profileController = {};
-// Upload profile image
 profileController.uploadProfileImage = async (req, res) => {
   try {
-    // Verify authentication
     const payload = await verifyVendorToken(req);
     if (!payload) {
       return res.status(401).json({
@@ -26,7 +27,6 @@ profileController.uploadProfileImage = async (req, res) => {
       });
     }
 
-    // Validate file
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -50,29 +50,59 @@ profileController.uploadProfileImage = async (req, res) => {
       });
     }
 
-    // Upload to Cloudinary
-    const imageUrl = await saveFileToCloudinary(
+    const vendor = await getUpdatedProfileImage(payload.id);
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        error: "Vendor not found",
+      });
+    }
+
+    const oldPublicId = vendor.public_id;
+
+    const upload = await saveFileToCloudinary(
       req.file,
       "vendor_profile_images",
       "image",
     );
-    if (!imageUrl.secure_url) {
-      return { success: false, error: "Failed to upload image to Cloudinary" };
-    }
 
-    // Save to database
-    const savedImageUrl = await uploadVendorProfileImage(
+    if (!upload.secure_url) {
+      return res.status(500).json({
+        success: false,
+        error: "Image upload failed",
+      });
+    }
+    const updated = await uploadVendorProfileImage(
       payload.id,
-      imageUrl.secure_url,
+      upload.secure_url,
+      upload.public_id,
     );
-    if (!savedImageUrl) {
-      return { success: false, error: "Failed to save image URL to database" };
+
+    if (!updated) {
+      // rollback cloudinary upload
+      await deleteFileFromCloudinary(upload.public_id);
+
+      return res.status(500).json({
+        success: false,
+        error: "Your profile upload failed. Try again later.",
+      });
     }
 
-    return res.status(200).json({
+    // delete old image AFTER db update
+    if (oldPublicId) {
+      try {
+        await deleteFileFromCloudinary(oldPublicId);
+      } catch (err) {
+        // log only
+        console.error(err);
+      }
+    }
+
+    return res.json({
       success: true,
-      message: "Profile image uploaded successfully",
-      data: savedImageUrl,
+      message: "Profile image upload successfully",
+      data: updated,
     });
   } catch (error) {
     console.error("Error uploading profile image:", error);
@@ -94,7 +124,6 @@ profileController.getProfileImage = async (req, res) => {
       });
     }
     const imageUrl = await getUpdatedProfileImage(payload.id);
-    // console.log(imageUrl);
     if (!imageUrl) {
       return res.status(404).json({
         success: false,
@@ -103,7 +132,7 @@ profileController.getProfileImage = async (req, res) => {
     }
     return res.status(200).json({
       success: true,
-      data: imageUrl ?? "",
+      data: imageUrl.profile_image_url ?? "",
     });
   } catch (error) {
     return res.status(500).json({
@@ -362,21 +391,41 @@ profileController.completeOnboarding = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
 
     // Handle Field Ops specific document submission
-    const { appointment_letter_url, id_card_url, optional_document_url } = req.body || {};
+    const { appointment_letter_url, id_card_url, optional_document_url } =
+      req.body || {};
     if (appointment_letter_url && id_card_url) {
-       const checkDoc = await pool.query("SELECT id FROM field_operations_documents WHERE vendor_id = $1", [payload.id]);
-       if (checkDoc.rows.length > 0) {
-          await pool.query(`
+      const checkDoc = await pool.query(
+        "SELECT id FROM field_operations_documents WHERE vendor_id = $1",
+        [payload.id],
+      );
+      if (checkDoc.rows.length > 0) {
+        await pool.query(
+          `
              UPDATE field_operations_documents 
              SET appointment_letter_url = $1, id_card_url = $2, optional_document_url = $3, updated_at = now()
              WHERE vendor_id = $4
-          `, [appointment_letter_url, id_card_url, optional_document_url || null, payload.id]);
-       } else {
-          await pool.query(`
+          `,
+          [
+            appointment_letter_url,
+            id_card_url,
+            optional_document_url || null,
+            payload.id,
+          ],
+        );
+      } else {
+        await pool.query(
+          `
              INSERT INTO field_operations_documents (vendor_id, appointment_letter_url, id_card_url, optional_document_url)
              VALUES ($1, $2, $3, $4)
-          `, [payload.id, appointment_letter_url, id_card_url, optional_document_url || null]);
-       }
+          `,
+          [
+            payload.id,
+            appointment_letter_url,
+            id_card_url,
+            optional_document_url || null,
+          ],
+        );
+      }
     }
 
     const success = await finalizeOnboarding(payload.id);
@@ -409,12 +458,10 @@ profileController.updateBasicInfo = async (req, res) => {
       phone,
     );
     if (!updatedUser) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "Failed to update profile information",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "Failed to update profile information",
+      });
     }
 
     return res.status(200).json({

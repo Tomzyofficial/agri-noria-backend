@@ -7,7 +7,6 @@ export async function getCheckoutData(req, res) {
   }
   try {
     const data = await getBuyerCheckoutData(buyerId);
-    console.log("data result", data);
     return res.json(data);
   } catch (error) {
     console.error("Error fetching checkout data:", error);

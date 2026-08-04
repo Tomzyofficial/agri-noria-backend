@@ -81,7 +81,7 @@ export const droneListingsDb = {
           : null;
 
         await client.query(
-          "UPDATE listings SET product_image = $1, public_id = $2 WHERE id = $3",
+          "UPDATE listings SET image = $1, public_id = $2 WHERE id = $3",
           [imageUrl, publicId, result.rows[0].id],
         );
 
@@ -125,7 +125,7 @@ export const droneListingsDb = {
 
     const listings = await pool.query(
       `
-         SELECT ls.id, ls.account_id, ls.product_image, ls.listing_name, ls.description, ls.price, ls.product_status, cu.country_code, cu.currency, dld.rental_price FROM listings ls LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id WHERE ls.account_id = $1 ORDER BY ls.id DESC LIMIT $2 OFFSET $3
+         SELECT ls.id, ls.account_id, ls.image, ls.listing_name, ls.created_at, ls.price, ls.status, cu.country_code, cu.currency, dld.rental_price FROM listings ls LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id WHERE ls.account_id = $1 ORDER BY ls.id DESC LIMIT $2 OFFSET $3
       `,
       [vendorId, limit, offset],
     );
@@ -148,7 +148,7 @@ export const droneListingsDb = {
            ls.id,
            ls.account_id,
            ls.role,
-           ls.product_image,
+           ls.image,
            ls.public_id,
            ls.listing_name,
            ls.description,
@@ -156,7 +156,7 @@ export const droneListingsDb = {
            ls.location,
            ls.created_at,
            ls.updated_at,
-           ls.product_status,
+           ls.status,
            ls.available_quantity,
            ls.unit,
            ls.category,
@@ -224,7 +224,7 @@ export const droneListingsDb = {
       await client.query("BEGIN");
 
       const existing = await client.query(
-        "SELECT product_image, public_id FROM listings WHERE id = $1 AND account_id = $2",
+        "SELECT image, public_id FROM listings WHERE id = $1 AND account_id = $2",
         [listingId, vendorId],
       );
 
@@ -233,7 +233,7 @@ export const droneListingsDb = {
         return null;
       }
 
-      let imageUrls = existing.rows[0].product_image;
+      let imageUrls = existing.rows[0].image;
       let publicIds = existing.rows[0].public_id;
 
       if (image?.length) {
@@ -255,7 +255,7 @@ export const droneListingsDb = {
         `
          UPDATE listings
          SET
-            product_image = COALESCE($1, product_image),
+            image = COALESCE($1, image),
             public_id = COALESCE($2, public_id),
             listing_name = COALESCE($3, listing_name),
             description = COALESCE($4, description),
@@ -340,7 +340,7 @@ export const droneListingsDb = {
            ls.id,
            ls.account_id,
            ls.role,
-           ls.product_image,
+           ls.image,
            ls.public_id,
            ls.listing_name,
            ls.description,
@@ -462,11 +462,11 @@ export const droneListingsDb = {
 
     const listings = await pool.query(
       `
-         SELECT ls.id, ls.listing_name, dld.manufacturer, dld.model, ls.category, dld.listing_type, ls.location, ls.available_quantity, ls.unit, ls.description, ls.price, dld.condition, dld.warranty, dld.rental_price, dld.rental_period, dld.max_payload, dld.operating_range, dld.camera_type, dld.flight_time, dld.provide_service, dld.service_type, ls.product_image, ls.product_status, ls.created_at, ls.updated_at, cu.country_code, cu.currency
+         SELECT ls.id, ls.listing_name, dld.manufacturer, dld.model, ls.category, dld.listing_type, ls.location, ls.available_quantity, ls.unit, ls.description, ls.price, dld.condition, dld.warranty, dld.rental_price, dld.rental_period, dld.max_payload, dld.operating_range, dld.camera_type, dld.flight_time, dld.provide_service, dld.service_type, ls.image, ls.status, ls.created_at, ls.updated_at, cu.country_code, cu.currency
          FROM listings ls
          LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id
          LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id
-         WHERE ls.product_status = 'active' AND ls.role = 'drone'
+         WHERE ls.status = 'active' AND ls.role = 'drone'
          ORDER BY ls.created_at DESC
          LIMIT $1 OFFSET $2
       `,
@@ -477,7 +477,7 @@ export const droneListingsDb = {
       `
          SELECT COUNT(*) AS count
          FROM listings
-         WHERE product_status = 'active'
+         WHERE status = 'active'
       `,
     );
 
@@ -499,7 +499,7 @@ export const droneListingsDb = {
          FROM listings ls
          LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id
          LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id
-         WHERE ls.id = $1 AND ls.product_status = 'active'
+         WHERE ls.id = $1 AND ls.status = 'active'
       `,
       [listingId],
     );
@@ -507,3 +507,52 @@ export const droneListingsDb = {
     return result.rows[0] || null;
   },
 };
+
+// Get all the quote requests for the vendor's storage facilities
+export async function getQuoteRequests(accountId) {
+  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, ls.listing_name, dld.manufacturer, dld.listing_type FROM quote_requests qr 
+    LEFT JOIN listings ls ON ls.id = qr.target_id LEFT JOIN drone_listing_details dld ON dld.listing_id = ls.id WHERE ls.account_id = $1 ORDER BY qr.created_at DESC LIMIT 5`;
+
+  const allQuoteRequestQuery = `SELECT qr.id AS quote_request_id, qr.target_id, qr.full_name,
+      qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, ls.listing_name, dld.manufacturer, dld.listing_type FROM quote_requests qr
+       LEFT JOIN listings ls ON ls.id = qr.target_id LEFT JOIN drone_listing_details dld ON dld.listing_id = ls.id WHERE ls.account_id = $1 ORDER BY qr.created_at DESC`;
+
+  const [quoteRequestsResult, allQuoteRequestsResult] = await Promise.all([
+    pool.query(quoteRequestsQuery, [accountId]),
+    pool.query(allQuoteRequestQuery, [accountId]),
+  ]);
+
+  return {
+    success: true,
+    quoteRequests: quoteRequestsResult.rows,
+    allQuoteRequests: allQuoteRequestsResult.rows,
+  };
+}
+
+// Update Quote request status to contacted when vendor clicks contact button
+export async function updateQuoteRequestStatus(
+  quoteRequestId,
+  status,
+  accountId,
+) {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE quote_requests SET status = $1 FROM
+         listings ls WHERE ls.id = quote_requests.target_id AND quote_requests.id = $2 AND ls.account_id = $3
+         RETURNING *`,
+      [status, quoteRequestId, accountId],
+    );
+
+    if (!rows[0]) {
+      return {
+        success: false,
+        error: "Quote request not found or unauthorized",
+      };
+    }
+
+    return { success: true, data: rows[0] };
+  } catch (error) {
+    console.log("error here", error);
+    return { success: false, error: "Internal server error. Try again." };
+  }
+}

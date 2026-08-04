@@ -38,8 +38,16 @@ export { cloudinary };
 // }
 
 export async function deleteFileFromCloudinary(publicId) {
+  if (!publicId) return;
   try {
-    const result = await cloudinary.uploader.destroy(publicId);
+    let result = null;
+    if (Array.isArray(publicId)) {
+      result = publicId.map((public_id) =>
+        cloudinary.uploader.destroy(public_id),
+      );
+    } else {
+      result = cloudinary.uploader.destroy(publicId);
+    }
     return result;
   } catch (error) {
     console.error("Error deleting file:", error);
@@ -78,7 +86,7 @@ export async function saveFileToCloudinary(fileOrFiles, folder, resourceType) {
     return Promise.all(
       fileOrFiles.map((file) => uploadSingleFile(file, folder, resourceType)),
     );
+  } else {
+    return uploadSingleFile(fileOrFiles, folder, resourceType);
   }
-
-  return uploadSingleFile(fileOrFiles, folder, resourceType);
 }

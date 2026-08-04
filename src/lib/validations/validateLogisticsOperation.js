@@ -1,21 +1,27 @@
 import { z } from "zod";
 
+const imageFileTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+
 const vehicleUploadSchema = z.object({
-  images: z
+  image: z
     .any()
-    .refine((file) => !!file, {
-      message: "Vehicle image is required.",
-    })
     .refine(
-      (file) =>
-        ["image/jpeg", "image/png", "image/webp"].includes(file?.mimetype),
-      {
-        message: "Only JPG, PNG, or WEBP images are allowed.",
-      },
+      (files) => files && files.length > 0,
+      "At least one image file is required",
     )
-    .refine((file) => file?.size <= 10 * 1024 * 1024, {
-      message: "Image size must not exceed 10MB.",
-    }),
+    .refine((files) => files?.length <= 5, "Maximum 5 images allowed")
+    .refine(
+      (files) =>
+        Array.from(files).every((file) =>
+          imageFileTypes.includes(file.mimetype),
+        ),
+      "Only JPG, JPEG, PNG or WEBP images are allowed",
+    )
+    .refine(
+      (files) =>
+        Array.from(files).every((file) => file.size <= 5 * 1024 * 1024),
+      "Each image must not exceed 5MB",
+    ),
   // Matches VARCHAR(255) and is trimmed
   title: z
     .string()

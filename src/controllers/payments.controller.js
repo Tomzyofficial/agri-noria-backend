@@ -49,7 +49,7 @@ const checkoutCallbackUrl = () => {
 export async function initializeBuyerPayment(req, res) {
   try {
     const payload = await verifyBuyerToken(req);
-    if (!payload?.buyer_id) {
+    if (!payload) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
@@ -215,9 +215,7 @@ export async function verifyBuyerPayment(req, res) {
         const orderDataResult = await getOrderDataForEmails(payment.order_id);
         if (orderDataResult.success && orderDataResult.data) {
           const emailData = orderDataResult.data;
-          const emailResult =
-            await emailService.sendOrderNotificationEmails(emailData);
-          console.log("Order notification emails sent:", emailResult);
+          await emailService.sendOrderNotificationEmails(emailData);
         }
       } catch (emailError) {
         console.error(

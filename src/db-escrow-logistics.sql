@@ -91,17 +91,17 @@ CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     buyer_id UUID NOT NULL REFERENCES buyers(buyer_id) ON DELETE SET NULL,
-    seller_id UUID NOT NULL REFERENCES vendors(id) ON DELETE SET NULL,
+   --  seller_id UUID NOT NULL REFERENCES vendors(id) ON DELETE SET NULL,
     
     total_amount NUMERIC(12,2) NOT NULL CHECK (total_amount >= 0),
     currency VARCHAR(10) DEFAULT 'NGN',
-    
+    country_code VARCHAR(10) DEFAULT 'NG',
     status order_status_type DEFAULT 'pending',
     fulfillment_type fulfillment_type DEFAULT 'delivery',
     
     -- Delivery information
     delivery_address TEXT,
-    delivery_fee NUMERIC(12,2) DEFAULT 0 CHECK (delivery_fee >= 0),
+   --  delivery_fee NUMERIC(12,2) DEFAULT 0 CHECK (delivery_fee >= 0),
     estimated_delivery_time TIMESTAMP,
     
     -- Order metadata
@@ -114,9 +114,9 @@ CREATE TABLE IF NOT EXISTS orders (
 
 -- Indexes for orders
 CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON orders(buyer_id);
-CREATE INDEX IF NOT EXISTS idx_orders_seller_id ON orders(seller_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_metadata_gin ON orders USING GIN (metadata)
 
 -- Trigger for updated_at
 DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS payments (
     
     -- Escrow release information
     released_at TIMESTAMP WITH TIME ZONE,
-    release_reason TEXT,
+   --  release_reason TEXT,
     
     -- Payment metadata
     payment_method VARCHAR(50),
@@ -296,14 +296,13 @@ CREATE TABLE IF NOT EXISTS escrow_releases (
     payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     
-    status VARCHAR(30) DEFAULT 'pending', -- pending, completed, failed
+    status VARCHAR(30) DEFAULT 'held', -- held, completed, failed
     
     trigger_type escrow_trigger_type,
     
     -- Release details
     released_at TIMESTAMP WITH TIME ZONE,
-    released_by UUID REFERENCES vendors(id) ON DELETE SET NULL, -- admin or system
-    release_amount NUMERIC(12,2) CHECK (release_amount >= 0),
+    released_by UUID, -- admin or system
     
     -- Reason and notes
     reason TEXT,
@@ -516,3 +515,44 @@ BEGIN
     RETURN v_otp;
 END;
 $$ LANGUAGE plpgsql;
+
+
+CREATE TABLE IF NOT EXISTS payouts (
+
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    payment_id UUID NOT NULL
+        REFERENCES payments(id) ON DELETE CASCADE,
+
+    order_id UUID NOT NULL
+        REFERENCES orders(id) ON DELETE CASCADE,
+
+    recipient_vendor_id UUID NOT NULL
+        REFERENCES vendors(id),
+
+    recipient_type VARCHAR(30) NOT NULL,
+
+    payout_type VARCHAR(30) NOT NULL,
+
+    gross_amount NUMERIC(12,2) NOT NULL, -- overall amount
+
+    commission_amount NUMERIC(12,2) DEFAULT 0, -- platform commission
+
+    net_amount NUMERIC(12,2) NOT NULL, -- actual amount to be paid out
+
+    currency VARCHAR(10) DEFAULT 'NGN',
+
+    status VARCHAR(30) DEFAULT 'pending',
+
+    transfer_reference VARCHAR(255),
+
+    transfer_response JSONB DEFAULT '{}',
+
+    failure_reason TEXT,
+
+    released_at TIMESTAMP,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    updated_at TIMESTAMP DEFAULT NOW()
+);

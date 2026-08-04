@@ -15,8 +15,6 @@ export async function createTraining(
   durationMinutes,
   maxParticipants,
 ) {
-  const client = await pool.query("BEGIN");
-
   try {
     if (thumbnail) {
       thumbnail = await saveFileToCloudinary(
@@ -25,9 +23,9 @@ export async function createTraining(
         "image",
       );
     }
-    const result = await client.query(
+    const result = await pool.query(
       ` INSERT INTO trainings (trainer_id, title, description, thumbnail, agora_channel_name,
-         scheduled_at, duration_minutes, max_participants) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         scheduled_at, duration_minutes, max_participants, public_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         RETURNING *`,
       [
         trainerId,
@@ -38,19 +36,16 @@ export async function createTraining(
         scheduledAt,
         durationMinutes,
         maxParticipants,
+        thumbnail.public_id,
       ],
     );
-    await client.query("COMMIT");
     return { success: true, data: result.rows[0] };
   } catch (error) {
     console.error("error occurred while creating trainings", error);
-    await client.query("ROLLBACK");
     return {
       success: false,
       error: "Failed to create training. Please try again.",
     };
-  } finally {
-    client.release();
   }
 }
 
@@ -62,7 +57,7 @@ export async function deleteTraining(trainingId, trainerId) {
   try {
     // Check if the training exists and fetch its thumbnail
     const trainingResult = await client.query(
-      `SELECT status, thumbnail FROM trainings WHERE id = $1 AND trainer_id = $2`,
+      `SELECT status, public_id FROM trainings WHERE id = $1 AND trainer_id = $2`,
       [trainingId, trainerId],
     );
 
@@ -71,7 +66,7 @@ export async function deleteTraining(trainingId, trainerId) {
       return { success: false, error: "Training not found or unauthorized" };
     }
 
-    const { status, thumbnail } = trainingResult.rows[0];
+    const { status, public_id } = trainingResult.rows[0];
 
     // Prevent deletion of live training sessions
     if (status === "Live") {
@@ -79,16 +74,13 @@ export async function deleteTraining(trainingId, trainerId) {
       return { success: false, error: "Cannot delete a live training session" };
     }
 
-    // Delete the thumbnail from Cloudinary if it exists
-    if (thumbnail && thumbnail.includes("cloudinary.com")) {
-      const deleteResult = await deleteFileFromCloudinary(thumbnail);
-      if (!deleteResult || deleteResult.result !== "ok") {
-        await client.query("ROLLBACK");
-        return {
-          success: false,
-          error: "Failed to delete thumbnail from Cloudinary",
-        };
-      }
+    const deleteResult = await deleteFileFromCloudinary(public_id);
+    if (!deleteResult || deleteResult.result !== "ok") {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: "Failed to delete thumbnail from Cloudinary",
+      };
     }
 
     // Delete the training record from the database

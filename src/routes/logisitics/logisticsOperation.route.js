@@ -6,7 +6,7 @@ const logisticsOperationRoute = express.Router();
 
 logisticsOperationRoute.post(
   "/add-vehicle",
-  upload.single("images"),
+  upload.fields([{ name: "image", maxCount: 5 }]),
   logisiticsOperationController.addVehicle,
 );
 
@@ -36,6 +36,16 @@ logisticsOperationRoute.get(
 );
 
 logisticsOperationRoute.get(
+  "/shipments",
+  logisiticsOperationController.getLogisticsShipments,
+);
+
+logisticsOperationRoute.get(
+  "/quote-requests",
+  logisiticsOperationController.getQuoteRequests,
+);
+
+logisticsOperationRoute.get(
   "/orders/:orderId/detail",
   logisiticsOperationController.getLogisticsOrderDetail,
 );
@@ -50,16 +60,6 @@ logisticsOperationRoute.post(
   logisiticsOperationController.declineLogisticsOrder,
 );
 
-logisticsOperationRoute.get(
-  "/shipments",
-  logisiticsOperationController.getLogisticsShipments,
-);
-
-// logisticsOperationRoute.post(
-//   "/orders/:orderId/start-shipment",
-//   logisiticsOperationController.startLogisticsShipment,
-// );
-
 logisticsOperationRoute.post(
   "/orders/:orderId/start-shipment-confirm",
   upload.single("pickup_photo"),
@@ -69,11 +69,6 @@ logisticsOperationRoute.post(
 logisticsOperationRoute.post(
   "/orders/:orderId/complete-delivery",
   logisiticsOperationController.completeDelivery,
-);
-
-logisticsOperationRoute.get(
-  "/quote-requests",
-  logisiticsOperationController.getQuoteRequests,
 );
 
 logisticsOperationRoute.post(
