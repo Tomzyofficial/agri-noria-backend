@@ -139,7 +139,7 @@ async function createFarmerProfile(data) {
 
 async function getFarmerProfileByVendor(vendorId) {
    const { rows } = await pool.query(
-      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, cm.cluster_id
+      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, cm.cluster_id
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN programs p ON fp.program_id = p.id

@@ -95,10 +95,16 @@ pipelineController.getMyFarmerProfile = async (req, res) => {
       if (!profile) {
          // Fetch basic vendor info if farmer profile doesn't exist yet
          const { default: pool } = await import("../../lib/connect.js");
-         const { rows } = await pool.query("SELECT id, fname, lname, email, phone FROM vendors WHERE id = $1", [payload.id]);
+         const { rows } = await pool.query("SELECT id, fname, lname, email, phone, is_verified as vendor_is_verified, onboarding_status as vendor_onboarding_status, onboarding_level as vendor_onboarding_level FROM vendors WHERE id = $1", [payload.id]);
          if (rows.length > 0) {
             profile = { ...rows[0], is_new: true };
          }
+      }
+
+      if (profile) {
+         profile.is_verified = profile.vendor_is_verified || profile.is_verified === true || profile.onboarding_status === 'verified' || profile.onboarding_status === 'completed' || profile.vendor_onboarding_status === 'verified' || profile.vendor_onboarding_status === 'completed' || profile.vendor_onboarding_level >= 2;
+         profile.onboarding_status = profile.onboarding_status || profile.vendor_onboarding_status || 'unverified';
+         profile.onboarding_level = profile.vendor_onboarding_level || profile.onboarding_level || 0;
       }
 
       return res.status(200).json({ success: true, data: profile });
@@ -113,12 +119,22 @@ pipelineController.enrollInProgram = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const { program_id } = req.body;
+      const { program_id, cluster_id } = req.body;
+      const pool = (await import("../../db/pipeline/pipeline.db.js")).default || (await import("../../lib/connect.js")).default;
+
+      if (cluster_id) {
+         const { rows: clusterRows } = await pool.query(
+            "UPDATE clusters SET program_id = $1, updated_at = now() WHERE id = $2 RETURNING *",
+            [program_id, cluster_id]
+         );
+         if (!clusterRows[0]) return res.status(404).json({ success: false, error: "Cluster not found" });
+         return res.status(200).json({ success: true, data: clusterRows[0] });
+      }
+
       const profile = await getFarmerProfileByVendor(payload.id);
       if (!profile) return res.status(404).json({ success: false, error: "Farmer profile not found" });
 
       // Update the farmer profile in db
-      const pool = (await import("../../db/pipeline/pipeline.db.js")).default || (await import("../../lib/connect.js")).default;
       const { rows } = await pool.query(
          "UPDATE farmer_profiles SET program_id = $1, updated_at = now() WHERE id = $2 RETURNING *",
          [program_id, profile.id]
@@ -323,8 +339,16 @@ pipelineController.getClusters = async (req, res) => {
 
       let clusters = await getAllClusters();
 
-      // If the user is an aggregator, only return clusters they created (supervise)
-      if (payload.role?.toLowerCase() === 'aggregator') {
+      // If the user is an aggregator or cluster management role, only return clusters they created (supervise)
+      const supervisorRoles = [
+         'aggregator', 
+         'cluster supervisor', 
+         'program director', 
+         'regional manager', 
+         'cooperative', 
+         'producer association'
+      ];
+      if (supervisorRoles.includes(payload.role?.toLowerCase())) {
          clusters = clusters.filter(c => c.supervisor_id === payload.id);
       }
 
@@ -718,38 +742,66 @@ pipelineController.approveFunds = async (req, res) => {
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
       // Strict role check: Only Finance can approve
-      if (payload.role?.toLowerCase() !== 'finance' && payload.role?.toLowerCase() !== 'super admin') {
+      if (payload.role?.toLowerCase() !== 'finance' && payload.role?.toLowerCase() !== 'super admin' && payload.role?.toLowerCase() !== 'admin') {
          return res.status(403).json({ success: false, error: "Only Finance roles can approve funds" });
       }
 
-      const result = await approveInputFunds(req.params.id, payload.id);
-
-      // ENSURE FUNDS ARE NOT WITHDRAWABLE (DEPOSIT TO LOCKED BALANCE)
+      const requestId = req.params.id;
       const pool = (await import("../../lib/connect.js")).default;
 
-      if (result.is_cluster_request) {
-         let clusterWallet = await getWalletByOwner(result.cluster_id, "cluster");
-         if (!clusterWallet) {
-             clusterWallet = await createWallet(result.cluster_id, "cluster");
-             // If ON CONFLICT prevented insert and returned null, fetch again
-             if (!clusterWallet) clusterWallet = await getWalletByOwner(result.cluster_id, "cluster");
-         }
-         if (clusterWallet) {
-            await depositLockedFunds(clusterWallet.id, parseFloat(result.total_value), "Input financing approved", result.id, "input_request");
-         }
-      } else {
-         const { rows } = await pool.query("SELECT vendor_id FROM farmer_profiles WHERE id = $1", [result.farmer_id]);
-         if (rows.length > 0) {
-            let farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
-            if (!farmerWallet) {
-                farmerWallet = await createWallet(rows[0].vendor_id, "farmer");
-                if (!farmerWallet) farmerWallet = await getWalletByOwner(rows[0].vendor_id, "farmer");
-            }
-            if (farmerWallet) {
-               await depositLockedFunds(farmerWallet.id, parseFloat(result.total_value), "Input financing approved", result.id, "input_request");
-            }
-         }
+      // 1) FETCH REQUEST FIRST without modifying database status
+      const { rows: reqRows } = await pool.query("SELECT * FROM input_requests WHERE id = $1", [requestId]);
+      const requestData = reqRows[0];
+      if (!requestData) {
+         return res.status(404).json({ success: false, error: "Input request not found" });
       }
+      if (requestData.funds_status === 'approved') {
+         return res.status(400).json({ success: false, error: "Funds already authorized for this request" });
+      }
+
+      // 2) GET PROGRAM ID from package, farmer profile, or cluster
+      let programId = null;
+      if (requestData.package_id) {
+         const { rows: packageRows } = await pool.query("SELECT program_id FROM input_packages WHERE id = $1", [requestData.package_id]);
+         programId = packageRows[0]?.program_id;
+      }
+      if (!programId && requestData.farmer_id) {
+         const { rows: farmerRows } = await pool.query("SELECT program_id FROM farmer_profiles WHERE id = $1", [requestData.farmer_id]);
+         programId = farmerRows[0]?.program_id;
+      }
+      if (!programId && requestData.cluster_id) {
+         const { rows: clusterRows } = await pool.query("SELECT program_id FROM clusters WHERE id = $1", [requestData.cluster_id]);
+         programId = clusterRows[0]?.program_id;
+      }
+
+      if (!programId) return res.status(400).json({ success: false, error: "Invalid programme association. Requester must be enrolled in an active programme." });
+
+      // 3) CHECK PROGRAM WALLET BALANCE BEFORE ANY MUTATION
+      const { createProgramWallet, deductProgramWallet, createEscrowWallet } = await import("../../db/escrow/program_escrow.db.js");
+      let programWallet = await createProgramWallet(programId, payload.id);
+      if (parseFloat(programWallet.balance) < parseFloat(requestData.total_value)) {
+         const { rows: progRows } = await pool.query("SELECT created_by, name FROM programs WHERE id = $1", [programId]);
+         if (progRows[0]?.created_by) {
+            const alertMsg = `Input request approval of NGN ${parseFloat(requestData.total_value).toLocaleString()} for programme '${progRows[0].name}' failed due to depleted programme funds. Current Balance: NGN ${parseFloat(programWallet.balance).toLocaleString()}. Please fund your programme immediately.`;
+            await pool.query(
+               "INSERT INTO program_notifications (program_id, recipient_id, title, message) VALUES ($1, $2, $3, $4)",
+               [programId, progRows[0].created_by, "Programme Funds Depleted", alertMsg]
+            );
+         }
+         return res.status(400).json({ success: false, error: "Insufficient programme funds! An alert notification has been dispatched to the programme sponsor to replenish their funds." });
+      }
+
+      // 4) PROGRAM FUNDS ARE SUFFICIENT -> NOW EXECUTE APPROVAL & TRANSFER
+      const result = await approveInputFunds(requestId, payload.id);
+      await deductProgramWallet(programWallet.id, parseFloat(result.total_value));
+
+      let heldForId = result.is_cluster_request ? result.cluster_id : result.farmer_id;
+      const heldForType = result.is_cluster_request ? 'cluster' : 'farmer';
+      if (!result.is_cluster_request && result.farmer_id) {
+          const { rows: fRows } = await pool.query("SELECT vendor_id FROM farmer_profiles WHERE id = $1", [result.farmer_id]);
+          if (fRows[0]?.vendor_id) heldForId = fRows[0].vendor_id;
+      }
+      await createEscrowWallet(programId, heldForId, heldForType, parseFloat(result.total_value), { "items_delivered": false }, result.id, "input_request");
 
       return res.status(200).json({ success: true, data: result });
    } catch (error) {

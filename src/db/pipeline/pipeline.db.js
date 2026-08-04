@@ -244,7 +244,7 @@ async function createFarmerProfile(data) {
 
 async function getFarmerProfileByVendor(vendorId) {
    const { rows } = await pool.query(
-      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, cm.cluster_id
+      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, cm.cluster_id
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN programs p ON fp.program_id = p.id
@@ -704,11 +704,11 @@ async function confirmInputDelivery(requestId, userId) {
       const request = reqRes.rows[0];
 
       if (!request) throw new Error("Input request not found");
-      if (request.items_status === 'delivered') throw new Error("Input request already marked as delivered");
+      if (request.items_status === 'confirmed_delivered') throw new Error("Input request delivery already confirmed");
 
-      // Mark as delivered
+      // Mark as confirmed_delivered
       const updateRes = await client.query(
-         "UPDATE input_requests SET items_status = 'delivered' WHERE id = $1 RETURNING *",
+         "UPDATE input_requests SET items_status = 'confirmed_delivered' WHERE id = $1 RETURNING *",
          [requestId]
       );
 

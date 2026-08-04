@@ -346,8 +346,43 @@ async function updateSystemSettings(settings) {
    }
 }
 
+// Ensure research tables exist
+async function ensureResearchTables() {
+   try {
+      await pool.query(`
+         CREATE TABLE IF NOT EXISTS trial_plots (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+            plot_name TEXT NOT NULL,
+            location TEXT NOT NULL,
+            crop TEXT NOT NULL,
+            size_hectares NUMERIC(10,2),
+            status TEXT DEFAULT 'active',
+            start_date DATE,
+            end_date DATE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+         );
+         CREATE TABLE IF NOT EXISTS research_advisories (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            category TEXT,
+            severity TEXT DEFAULT 'warning',
+            message TEXT,
+            status TEXT DEFAULT 'active',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+         );
+      `);
+   } catch (err) {
+      console.error("Error ensuring research tables:", err);
+   }
+}
+
 // Get institution-specific analytics for dashboard
 async function getInstitutionAnalytics(institutionId, role) {
+   await ensureResearchTables();
    const isGovernment = role === 'government';
    
    // If government, see all. Otherwise, see only programs created by this institution
@@ -358,7 +393,7 @@ async function getInstitutionAnalytics(institutionId, role) {
       ? `(SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem')`
       : `(SELECT COUNT(DISTINCT farmer_id) FROM farmer_programmes WHERE program_id IN (SELECT id FROM programs WHERE created_by = '${institutionId}'))`;
 
-   const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats] = await Promise.all([
+   const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats, extraStats] = await Promise.all([
       pool.query(`
          SELECT 
             (SELECT COUNT(*) FROM programs ${programsFilter}) as active_programs,
@@ -386,6 +421,17 @@ async function getInstitutionAnalytics(institutionId, role) {
       `),
       pool.query(`
          SELECT id, title, deadline_date FROM upcoming_deadlines ORDER BY deadline_date ASC
+      `),
+      pool.query(`
+         SELECT 
+            (SELECT COUNT(*) FROM vendors WHERE LOWER(role) LIKE '%coop%') as total_cooperatives,
+            (SELECT COALESCE(SUM(quantity_mt), 0) FROM harvest_batches) as total_harvests,
+            (SELECT COALESCE(ROUND((COUNT(*) FILTER (WHERE status IN ('approved', 'distributed', 'completed')) * 100.0) / NULLIF(COUNT(*), 0)), 0) FROM input_requests) as program_kpi,
+            (SELECT COUNT(*) FROM research_publications) as total_publications,
+            (SELECT COUNT(*) FROM system_health WHERE status != 'operational') as active_alerts,
+            (SELECT COALESCE(ROUND((COUNT(*) FILTER (WHERE is_verified = true) * 100.0) / NULLIF(COUNT(*), 0)), 0) FROM vendors WHERE LOWER(role) = 'farmer') as training_adoption,
+            (SELECT COUNT(*) FROM trial_plots) as total_trial_plots,
+            (SELECT COUNT(*) FROM research_advisories WHERE status = 'active') as research_alerts
       `)
    ]);
 
@@ -394,7 +440,17 @@ async function getInstitutionAnalytics(institutionId, role) {
          activePrograms: parseInt(ecosystemStats.rows[0].active_programs),
          totalFarmers: parseInt(ecosystemStats.rows[0].total_farmers),
          totalHectares: parseFloat(ecosystemStats.rows[0].total_hectares),
-         totalDeployed: parseFloat(inputStats.rows[0].approved_value)
+         totalDeployed: parseFloat(inputStats.rows[0].approved_value),
+         totalCooperatives: parseInt(extraStats.rows[0].total_cooperatives || 0),
+         totalHarvests: parseFloat(extraStats.rows[0].total_harvests || 0),
+         programKpi: parseInt(extraStats.rows[0].program_kpi || 0),
+         totalPublications: parseInt(extraStats.rows[0].total_publications || 0),
+         activeAlerts: parseInt(extraStats.rows[0].active_alerts || 0),
+         researchAlerts: parseInt(extraStats.rows[0].research_alerts || 0),
+         totalTrialPlots: parseInt(extraStats.rows[0].total_trial_plots || 0),
+         trainingAdoption: parseInt(extraStats.rows[0].training_adoption || 0),
+         irrigationCoverage: parseInt(extraStats.rows[0].training_adoption || 0),
+         womenPercentage: parseInt(extraStats.rows[0].program_kpi || 0)
       },
       disbursements: {
          pendingCount: parseInt(inputStats.rows[0].pending_count),
@@ -591,6 +647,24 @@ async function getInstitutionNgoDistribution(institutionId, role) {
    return rows;
 }
 
+async function getInstitutionTrialPlots(vendorId, role) {
+   await ensureResearchTables();
+   const filter = (role === 'government' || role === 'admin' || role === 'super admin') ? "" : `WHERE vendor_id = '${vendorId}'`;
+   const { rows } = await pool.query(`SELECT * FROM trial_plots ${filter} ORDER BY created_at DESC`);
+   return rows;
+}
+
+async function createInstitutionTrialPlot(vendorId, plotData) {
+   await ensureResearchTables();
+   const { plot_name, location, crop, size_hectares, status, start_date, end_date } = plotData;
+   const { rows } = await pool.query(
+      `INSERT INTO trial_plots (vendor_id, plot_name, location, crop, size_hectares, status, start_date, end_date) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [vendorId, plot_name, location, crop, size_hectares || 0, status || 'active', start_date || null, end_date || null]
+   );
+   return rows[0];
+}
+
 export {
    getAllUsers,
    getUserCountByRole,
@@ -624,5 +698,7 @@ export {
    getInstitutionReports,
    getInstitutionExtension,
    getInstitutionNgoDistribution,
+   getInstitutionTrialPlots,
+   createInstitutionTrialPlot,
 };
 

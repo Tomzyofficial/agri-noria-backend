@@ -3,11 +3,29 @@ import pool from "../../../lib/connect.js";
 // Get providers by role
 export const getProvidersByRole = async (req, res) => {
   const { role } = req.params;
+  const searchRole = (role || "").toLowerCase();
   try {
-    const providers = await pool.query(
-      "SELECT id, fname, lname, email, phone, workspace, total_capacity_mt FROM vendors WHERE role = $1",
-      [role.toLowerCase()]
-    );
+    // Ensure column exists on vendors table
+    await pool.query('ALTER TABLE vendors ADD COLUMN IF NOT EXISTS total_capacity_mt NUMERIC DEFAULT 0');
+
+    let query = "";
+    let params = [];
+    if (searchRole === 'storage') {
+      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, role 
+               FROM vendors 
+               WHERE LOWER(role) LIKE '%storage%' OR LOWER(role) LIKE '%warehouse%'`;
+    } else if (searchRole === 'logistics') {
+      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, role 
+               FROM vendors 
+               WHERE LOWER(role) LIKE '%logistics%' OR LOWER(role) LIKE '%transport%' OR LOWER(role) LIKE '%courier%'`;
+    } else {
+      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, role 
+               FROM vendors 
+               WHERE LOWER(role) LIKE $1`;
+      params = [`%${searchRole}%`];
+    }
+
+    const providers = await pool.query(query, params);
     res.status(200).json({ success: true, data: providers.rows });
   } catch (error) {
     console.error("Error fetching providers:", error);
@@ -122,7 +140,7 @@ export const requestStorage = async (req, res) => {
     let targetWarehouse = warehouse_id;
     if (!targetWarehouse) {
       // Find a real storage vendor
-      const storageVendor = await pool.query("SELECT id FROM vendors WHERE role = 'storage' LIMIT 1");
+      const storageVendor = await pool.query("SELECT id FROM vendors WHERE LOWER(role) LIKE '%storage%' OR LOWER(role) LIKE '%warehouse%' LIMIT 1");
       if (storageVendor.rows.length > 0) {
         targetWarehouse = storageVendor.rows[0].id;
       } else {

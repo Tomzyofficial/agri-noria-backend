@@ -31,6 +31,10 @@ async function createProgram(data) {
          created_by
       ]
    );
+   await pool.query(
+      "INSERT INTO program_wallets (program_id, institution_id, balance) VALUES ($1, $2, 0.00) ON CONFLICT DO NOTHING",
+      [rows[0].id, created_by]
+   );
    return rows[0];
 }
 
@@ -38,11 +42,13 @@ async function createProgram(data) {
 async function getAllPrograms() {
    const { rows } = await pool.query(
       `SELECT p.*, v.fname || ' ' || v.lname as creator_name,
-        COUNT(DISTINCT fp.id) as enrolled_farmers
+        COUNT(DISTINCT fp.id) as enrolled_farmers,
+        COALESCE(pw.balance, 0.00) as wallet_balance
        FROM programs p 
        LEFT JOIN vendors v ON p.created_by = v.id
        LEFT JOIN farmer_profiles fp ON fp.program_id = p.id
-       GROUP BY p.id, v.id
+       LEFT JOIN program_wallets pw ON pw.program_id = p.id
+       GROUP BY p.id, v.id, pw.balance
        ORDER BY p.created_at DESC`
    );
    return rows;
@@ -57,7 +63,16 @@ async function getProgramById(id) {
 // Get programs created by a specific vendor
 async function getProgramsByCreator(vendorId) {
    const { rows } = await pool.query(
-      "SELECT * FROM programs WHERE created_by = $1 ORDER BY created_at DESC",
+      `SELECT p.*, v.fname || ' ' || v.lname as creator_name,
+        COUNT(DISTINCT fp.id) as enrolled_farmers,
+        COALESCE(pw.balance, 0.00) as wallet_balance
+       FROM programs p 
+       LEFT JOIN vendors v ON p.created_by = v.id
+       LEFT JOIN farmer_profiles fp ON fp.program_id = p.id
+       LEFT JOIN program_wallets pw ON pw.program_id = p.id
+       WHERE p.created_by = $1
+       GROUP BY p.id, v.id, pw.balance
+       ORDER BY p.created_at DESC`,
       [vendorId]
    );
    return rows;

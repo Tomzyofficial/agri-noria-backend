@@ -43,6 +43,7 @@ pipelineRoute.get("/pipeline/clusters/mine", pipelineController.getMyCluster);
 pipelineRoute.get("/pipeline/clusters/nearby", pipelineController.getNearbyClusters);
 pipelineRoute.get("/pipeline/clusters/eligible-farmers", pipelineController.getEligibleFarmers);
 pipelineRoute.post("/pipeline/clusters/assign", pipelineController.assignFarmer);
+pipelineRoute.patch("/pipeline/clusters/enroll", pipelineController.enrollInProgram);
 pipelineRoute.get("/pipeline/clusters/:id/members", pipelineController.getClusterMembers);
 pipelineRoute.delete("/pipeline/clusters/:id/members/:farmerId", pipelineController.removeFarmer);
 

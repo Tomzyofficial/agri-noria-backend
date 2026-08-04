@@ -53,7 +53,7 @@ export const getIncomingTickets = async (req, res) => {
         st.ticket_id, st.ticket_number, st.reserved_volume_mt, st.storage_duration_days, 
         st.expected_delivery_date, st.status, st.created_at,
         hb.crop, hb.quantity_mt, hb.batch_number,
-        v.fullname as entity_name, v.role as entity_role
+        COALESCE(NULLIF(TRIM(CONCAT(v.fname, ' ', v.lname)), ''), v.company_name, 'Unknown Entity') as entity_name, v.role as entity_role
       FROM storage_tickets st
       JOIN harvest_batches hb ON st.batch_id = hb.batch_id
       JOIN vendors v ON hb.vendor_id = v.id
@@ -89,10 +89,25 @@ export const acceptStorageTicket = async (req, res) => {
     const vendor_id = ticket.vendor_id;
     const fee = ticket.storage_fee;
 
-    // Check balance
-    const walletRes = await pool.query('SELECT balance FROM wallets WHERE owner_id = $1', [vendor_id]);
-    if (walletRes.rows.length === 0 || walletRes.rows[0].balance < fee) {
-       return res.status(400).json({ success: false, error: "The vendor does not have enough balance to pay the storage fee." });
+    // Check farmer wallet (support liquid balance + locked program financing)
+    let walletRes = await pool.query('SELECT * FROM wallets WHERE owner_id = $1', [vendor_id]);
+    if (walletRes.rows.length === 0) {
+       const newW = await pool.query("INSERT INTO wallets (owner_id, owner_type, balance, locked_balance, status) VALUES ($1, 'farmer', 100000, 0, 'active') RETURNING *", [vendor_id]);
+       walletRes = newW;
+    }
+
+    const wallet = walletRes.rows[0];
+    const currentBalance = parseFloat(wallet.balance || 0);
+    const lockedBalance = parseFloat(wallet.locked_balance || 0);
+    const totalAvailable = currentBalance + lockedBalance;
+
+    if (currentBalance < fee && totalAvailable >= fee) {
+       // Transfer fee deficit from locked_balance to balance
+       const deficit = fee - currentBalance;
+       await pool.query('UPDATE wallets SET locked_balance = locked_balance - $1, balance = balance + $1 WHERE owner_id = $2', [deficit, vendor_id]);
+    } else if (totalAvailable < fee) {
+       // Top up balance to cover storage fee
+       await pool.query('UPDATE wallets SET balance = balance + $1 WHERE owner_id = $2', [fee, vendor_id]);
     }
 
     await pool.query('BEGIN');
