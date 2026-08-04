@@ -66,8 +66,9 @@ export const submitLevel1 = async (req, res) => {
             `, [farmId, crop, variety, parseNull(planting_date), parseNull(expected_harvest_date)]);
         }
 
-        // Update vendor onboarding level to 1
-        await pool.query("UPDATE vendors SET onboarding_level = 1 WHERE id = $1 AND onboarding_level < 1", [vendor_id]);
+        // Update vendor and farmer_profile onboarding status and level
+        await pool.query("UPDATE vendors SET onboarding_level = GREATEST(onboarding_level, 1), onboarding_status = CASE WHEN onboarding_status IN ('pending', '') OR onboarding_status IS NULL THEN 'unverified' ELSE onboarding_status END WHERE id = $1", [vendor_id]);
+        await pool.query("UPDATE farmer_profiles SET onboarding_status = CASE WHEN onboarding_status IN ('pending', '') OR onboarding_status IS NULL THEN 'unverified' ELSE onboarding_status END WHERE vendor_id = $1", [vendor_id]);
 
         await pool.query('COMMIT');
         res.status(200).json({ success: true, message: "Level 1 Onboarding completed." });
@@ -118,8 +119,9 @@ export const submitLevel2 = async (req, res) => {
             ]);
         }
 
-        // Update vendor onboarding level to 2
-        await pool.query("UPDATE vendors SET onboarding_level = 2 WHERE id = $1 AND onboarding_level < 2", [vendor_id]);
+        // Update vendor onboarding level to 2 and set verified status after farm mapping
+        await pool.query("UPDATE vendors SET onboarding_level = GREATEST(onboarding_level, 2), onboarding_status = 'verified', is_verified = true WHERE id = $1", [vendor_id]);
+        await pool.query("UPDATE farmer_profiles SET onboarding_status = 'verified' WHERE vendor_id = $1", [vendor_id]);
 
         await pool.query('COMMIT');
         res.status(200).json({ success: true, message: "Level 2 Onboarding completed." });
@@ -185,8 +187,9 @@ export const submitLevel3 = async (req, res) => {
         // Increase Trust Score by 100 for finishing level 3
         await pool.query("UPDATE farmer_profiles SET trust_score = trust_score + 100 WHERE vendor_id = $1", [vendor_id]);
 
-        // Update vendor onboarding level to 3
-        await pool.query("UPDATE vendors SET onboarding_level = 3, onboarding_status = 'verified' WHERE id = $1", [vendor_id]);
+        // Update vendor onboarding level to 3 and verify
+        await pool.query("UPDATE vendors SET onboarding_level = 3, onboarding_status = 'verified', is_verified = true WHERE id = $1", [vendor_id]);
+        await pool.query("UPDATE farmer_profiles SET onboarding_status = 'verified' WHERE vendor_id = $1", [vendor_id]);
 
         await pool.query('COMMIT');
         res.status(200).json({ success: true, message: "Level 3 Onboarding completed! Passport generated." });

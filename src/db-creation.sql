@@ -94,8 +94,8 @@ CREATE TABLE IF NOT EXISTS vendor_documents (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXIST vendor_documents_vendor_id ON vendor_documents(vendor_id);
-CREATE INDEX IF NOT EXIST vendor_documents_business_name ON vendor_documents(business_name);
+CREATE INDEX IF NOT EXISTS vendor_documents_vendor_id ON vendor_documents(vendor_id);
+CREATE INDEX IF NOT EXISTS vendor_documents_business_name ON vendor_documents(business_name);
 
 
 -- Trigger for automatically setting is_verified col in vendors table to true
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS vendor_bank_accounts (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXIST vendor_bank_account_vendor_id ON vendor_bank_accounts(vendor_id);
+CREATE INDEX IF NOT EXISTS vendor_bank_account_vendor_id ON vendor_bank_accounts(vendor_id);
 
 
 -- Vendor stats (simple aggregated data)
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS public.listings (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXIST vendor_listings_vendor_id ON listings(account_id);
+CREATE INDEX IF NOT EXISTS vendor_listings_vendor_id ON listings(account_id);
 
 -- Customer table
 -- CREATE TABLE IF NOT EXISTS buyer_orders (
@@ -224,11 +224,11 @@ CREATE TABLE IF NOT EXISTS cart_items(
    country_code TEXT NOT NULL,
    currency TEXT NOT NULL,
    min_quantity INTEGER,
-   discount NUMERIC(5,2),
+   discount NUMERIC(5,2)
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXIST cart_items_cart_id ON cart_items(cart_id);
+CREATE INDEX IF NOT EXISTS cart_items_cart_id ON cart_items(cart_id);
 
 
 -- Reviews table
@@ -244,8 +244,8 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXIST review_listing_id ON reviews(listing_id);
-CREATE INDEX IF NOT EXIST review_buyer_id ON reviews(buyer_id);
+CREATE INDEX IF NOT EXISTS review_listing_id ON reviews(listing_id);
+CREATE INDEX IF NOT EXISTS review_buyer_id ON reviews(buyer_id);
 
 -- Billing cycle enum
 DO $$
@@ -324,9 +324,9 @@ CREATE TABLE IF NOT EXISTS vendor_subscriptions (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXIST vendor_sub_vendor_id ON vendor_subscriptions(vendor_id);
-CREATE INDEX IF NOT EXIST vendor_sub_plan_id ON vendor_subscriptions(plan_id);
-CREATE INDEX IF NOT EXIST vendor_sub_pending_plan_id ON vendor_subscriptions(pending_plan_id);
+CREATE INDEX IF NOT EXISTS vendor_sub_vendor_id ON vendor_subscriptions(vendor_id);
+CREATE INDEX IF NOT EXISTS vendor_sub_plan_id ON vendor_subscriptions(plan_id);
+CREATE INDEX IF NOT EXISTS vendor_sub_pending_plan_id ON vendor_subscriptions(pending_plan_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_subscriptions_customer_code ON vendor_subscriptions(paystack_customer_code);
 CREATE INDEX IF NOT EXISTS idx_vendor_subscriptions_subscription_code ON vendor_subscriptions(paystack_subscription_code);
 
@@ -349,8 +349,8 @@ CREATE TABLE IF NOT EXISTS subscription_invoices (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXIST idx_subscription_invoices_vendor_id ON subscription_invoices(vendor_id);
-CREATE INDEX IF NOT EXIST idx_subscription_invoices_subscription_id ON subscription_invoices(subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_invoices_vendor_id ON subscription_invoices(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_invoices_subscription_id ON subscription_invoices(subscription_id);
 
 -- Transactions table (to track payment transactions)
 CREATE TABLE IF NOT EXISTS transactions (

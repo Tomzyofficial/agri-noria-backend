@@ -29,7 +29,9 @@ async function migrate() {
         'service-providers-schema.sql',
         'migrations/add-order-status-declined.sql',
         'migrations/add-workspace-role-to-vendors.sql',
-        'db-preharvest-contracts.sql'
+        'db-preharvest-contracts.sql',
+        'db-institution-roles.sql',
+        'db-program-funding.sql'
     ];
 
     try {

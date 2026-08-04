@@ -15,7 +15,7 @@ institutionAdminController.getAnalytics = async (req, res) => {
 
       // Check if user is an institution or admin
       const role = payload.role?.toLowerCase();
-      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
+      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin", "producer association", "cooperative", "research institution"];
       
       if (!allowedRoles.includes(role)) {
          return res.status(403).json({ success: false, error: "Forbidden: Institutional access required" });
@@ -38,7 +38,7 @@ institutionAdminController.getPortfolio = async (req, res) => {
       }
 
       const role = payload.role?.toLowerCase();
-      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
+      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin", "producer association", "cooperative", "research institution"];
       
       if (!allowedRoles.includes(role)) {
          return res.status(403).json({ success: false, error: "Forbidden: Institutional access required" });
@@ -63,7 +63,7 @@ institutionAdminController.getImpact = async (req, res) => {
       }
 
       const role = payload.role?.toLowerCase();
-      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin"];
+      const allowedRoles = ["institution", "government", "bank", "ngo", "dfi", "insurance firm", "commodity board", "finance", "super admin", "admin", "producer association", "cooperative", "research institution"];
       
       if (!allowedRoles.includes(role)) {
          return res.status(403).json({ success: false, error: "Forbidden: Institutional access required" });
@@ -178,32 +178,68 @@ institutionAdminController.assignDistributor = async (req, res) => {
 institutionAdminController.approveFunds = async (req, res) => {
    try {
       const payload = await verifyVendorToken(req);
-      if (!payload || payload.role?.toLowerCase() !== 'finance') {
+      if (!payload || (payload.role?.toLowerCase() !== 'finance' && payload.role?.toLowerCase() !== 'super admin' && payload.role?.toLowerCase() !== 'admin')) {
          return res.status(403).json({ success: false, error: "Finance role required" });
       }
 
       const { requestId } = req.body;
       if (!requestId) return res.status(400).json({ success: false, error: "Request ID is required" });
 
-      const updatedRequest = await approveInputFunds(requestId, payload.id);
-
-      // GET PROGRAM ID
-      const { rows: packageRows } = await pool.query("SELECT program_id FROM input_packages WHERE id = $1", [updatedRequest.package_id]);
-      const programId = packageRows[0]?.program_id;
-
-      if (!programId) return res.status(400).json({ success: false, error: "Invalid programme association." });
-
-      const { createProgramWallet, fundProgramWallet, deductProgramWallet, createEscrowWallet } = await import("../../db/escrow/program_escrow.db.js");
-      let programWallet = await createProgramWallet(programId, payload.id);
-      
-      if (parseFloat(programWallet.balance) < parseFloat(updatedRequest.total_value)) {
-         programWallet = await fundProgramWallet(programWallet.id, parseFloat(updatedRequest.total_value) * 10);
+      // 1) FETCH REQUEST FIRST without modifying database status
+      const { rows: reqRows } = await pool.query("SELECT * FROM input_requests WHERE id = $1", [requestId]);
+      const requestData = reqRows[0];
+      if (!requestData) {
+         return res.status(404).json({ success: false, error: "Input request not found" });
+      }
+      if (requestData.funds_status === 'approved') {
+         return res.status(400).json({ success: false, error: "Funds already authorized for this request" });
       }
 
+      // 2) GET PROGRAM ID from package, farmer profile, or cluster
+      let programId = null;
+      if (requestData.package_id) {
+         const { rows: packageRows } = await pool.query("SELECT program_id FROM input_packages WHERE id = $1", [requestData.package_id]);
+         programId = packageRows[0]?.program_id;
+      }
+      if (!programId && requestData.farmer_id) {
+         const { rows: farmerRows } = await pool.query("SELECT program_id FROM farmer_profiles WHERE id = $1", [requestData.farmer_id]);
+         programId = farmerRows[0]?.program_id;
+      }
+      if (!programId && requestData.cluster_id) {
+         const { rows: clusterRows } = await pool.query("SELECT program_id FROM clusters WHERE id = $1", [requestData.cluster_id]);
+         programId = clusterRows[0]?.program_id;
+      }
+
+      if (!programId) return res.status(400).json({ success: false, error: "Invalid programme association. Requester must be enrolled in an active programme." });
+
+      // 3) CHECK PROGRAM WALLET BALANCE BEFORE ANY MUTATION
+      const { createProgramWallet, deductProgramWallet, createEscrowWallet } = await import("../../db/escrow/program_escrow.db.js");
+      let programWallet = await createProgramWallet(programId, payload.id);
+      
+      if (parseFloat(programWallet.balance) < parseFloat(requestData.total_value)) {
+         // Log depletion alert for the program sponsor
+         const { rows: progRows } = await pool.query("SELECT created_by, name FROM programs WHERE id = $1", [programId]);
+         if (progRows[0]?.created_by) {
+             const alertMsg = `Input request approval of NGN ${parseFloat(requestData.total_value).toLocaleString()} for programme '${progRows[0].name}' failed due to depleted programme funds. Current Balance: NGN ${parseFloat(programWallet.balance).toLocaleString()}. Please fund your programme immediately.`;
+             await pool.query(
+                 "INSERT INTO program_notifications (program_id, recipient_id, title, message) VALUES ($1, $2, $3, $4)",
+                 [programId, progRows[0].created_by, "Programme Funds Depleted", alertMsg]
+             );
+         }
+         // Abort BEFORE approving the request or crediting any locked balance
+         return res.status(400).json({ success: false, error: "Insufficient programme funds! An alert notification has been dispatched to the programme sponsor to replenish their funds." });
+      }
+
+      // 4) PROGRAM FUNDS ARE SUFFICIENT -> NOW EXECUTE APPROVAL & TRANSFER
+      const updatedRequest = await approveInputFunds(requestId, payload.id);
       await deductProgramWallet(programWallet.id, parseFloat(updatedRequest.total_value));
 
-      const heldForId = updatedRequest.is_cluster_request ? updatedRequest.cluster_id : updatedRequest.farmer_id;
+      let heldForId = updatedRequest.is_cluster_request ? updatedRequest.cluster_id : updatedRequest.farmer_id;
       const heldForType = updatedRequest.is_cluster_request ? 'cluster' : 'farmer';
+      if (!updatedRequest.is_cluster_request && updatedRequest.farmer_id) {
+          const { rows: fRows } = await pool.query("SELECT vendor_id FROM farmer_profiles WHERE id = $1", [updatedRequest.farmer_id]);
+          if (fRows[0]?.vendor_id) heldForId = fRows[0].vendor_id;
+      }
       
       await createEscrowWallet(programId, heldForId, heldForType, parseFloat(updatedRequest.total_value), { "items_delivered": false }, updatedRequest.id, "input_request");
 
@@ -282,5 +318,46 @@ institutionAdminController.getTraceability = createDynamicController('getInstitu
 institutionAdminController.getReports = createDynamicController('getInstitutionReports');
 institutionAdminController.getExtension = createDynamicController('getInstitutionExtension');
 institutionAdminController.getNgoDistribution = createDynamicController('getInstitutionNgoDistribution');
+
+// Cooperatives Directory endpoint
+institutionAdminController.getCooperatives = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows } = await pool.query(
+         `SELECT id, fname, lname, email, phone, company_name, created_at 
+          FROM vendors 
+          WHERE LOWER(role) LIKE '%coop%' 
+          ORDER BY created_at DESC`
+      );
+
+      return res.status(200).json({ 
+          success: true, 
+          data: rows,
+          total: rows.length 
+      });
+   } catch (error) {
+      console.error("Error fetching cooperatives:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch cooperatives directory" });
+   }
+};
+
+// Trial Plots endpoints
+institutionAdminController.getTrialPlots = createDynamicController('getInstitutionTrialPlots');
+institutionAdminController.createTrialPlot = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const newPlot = await dbModule.createInstitutionTrialPlot(payload.id, req.body);
+      
+      return res.status(201).json({ success: true, data: newPlot });
+   } catch (error) {
+      console.error("Error creating trial plot:", error);
+      return res.status(500).json({ success: false, error: "Failed to create trial plot" });
+   }
+};
 
 export default institutionAdminController;

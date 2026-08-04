@@ -25,5 +25,8 @@ institutionAdminRoute.get("/traceability", institutionAdminController.getTraceab
 institutionAdminRoute.get("/reports", institutionAdminController.getReports);
 institutionAdminRoute.get("/extension", institutionAdminController.getExtension);
 institutionAdminRoute.get("/ngo-distribution", institutionAdminController.getNgoDistribution);
+institutionAdminRoute.get("/cooperatives", institutionAdminController.getCooperatives);
+institutionAdminRoute.get("/trial-plots", institutionAdminController.getTrialPlots);
+institutionAdminRoute.post("/trial-plots", institutionAdminController.createTrialPlot);
 
 export default institutionAdminRoute;

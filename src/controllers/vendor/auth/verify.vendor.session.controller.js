@@ -29,6 +29,7 @@ export async function verifyVendor(req, res) {
 
     // Use the unified onboarding_status from the vendors table
     const onboardingStatus = user?.onboarding_status || "pending";
+    const isVerified = user?.is_verified === true || onboardingStatus === "verified" || onboardingStatus === "completed" || (user?.onboarding_level >= 2);
     return res.status(200).json({
       authenticated: true,
       userId: payload.id,
@@ -40,6 +41,7 @@ export async function verifyVendor(req, res) {
       role: payload.role,
       onboarding_status: onboardingStatus,
       onboarding_level: user?.onboarding_level || 0,
+      is_verified: isVerified,
     });
   } catch (error) {
     console.error("Verify vendor error:", error);
