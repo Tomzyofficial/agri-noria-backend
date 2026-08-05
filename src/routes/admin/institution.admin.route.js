@@ -29,4 +29,8 @@ institutionAdminRoute.get("/cooperatives", institutionAdminController.getCoopera
 institutionAdminRoute.get("/trial-plots", institutionAdminController.getTrialPlots);
 institutionAdminRoute.post("/trial-plots", institutionAdminController.createTrialPlot);
 
+// Treasury Wallet Credit
+institutionAdminRoute.get("/wallets", institutionAdminController.getEcosystemWallets);
+institutionAdminRoute.post("/treasury/credit-wallet", institutionAdminController.creditUserWallet);
+
 export default institutionAdminRoute;

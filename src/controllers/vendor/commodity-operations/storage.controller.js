@@ -4,9 +4,11 @@ import pool from "../../../lib/connect.js";
 export const getStorageDashboardStats = async (req, res) => {
   const warehouse_id = req.user.id;
   try {
-    // 1. Get Capacity
-    const vendorRes = await pool.query('SELECT total_capacity_mt FROM vendors WHERE id = $1', [warehouse_id]);
+    await pool.query('ALTER TABLE vendors ADD COLUMN IF NOT EXISTS location TEXT');
+    // 1. Get Capacity & Location
+    const vendorRes = await pool.query('SELECT total_capacity_mt, location FROM vendors WHERE id = $1', [warehouse_id]);
     const totalCapacity = vendorRes.rows[0]?.total_capacity_mt || 0;
+    const location = vendorRes.rows[0]?.location || '';
 
     // 2. Active Tickets & Stored Inventory
     // We consider "active" and "stored" statuses
@@ -33,6 +35,7 @@ export const getStorageDashboardStats = async (req, res) => {
       success: true,
       data: {
         total_capacity: totalCapacity,
+        location: location,
         active_tickets: parseInt(active_tickets),
         stored_inventory: parseFloat(stored_inventory),
         expected_arrivals: parseInt(expected_arrivals)
@@ -150,18 +153,20 @@ export const acceptStorageTicket = async (req, res) => {
   }
 };
 
-// Update global storage settings (capacity)
+// Update global storage settings (capacity & location)
 export const updateStorageSettings = async (req, res) => {
   const warehouse_id = req.user.id;
-  const { total_capacity_mt } = req.body;
+  const { total_capacity_mt, location } = req.body;
   
   try {
+    await pool.query('ALTER TABLE vendors ADD COLUMN IF NOT EXISTS location TEXT');
     const result = await pool.query(`
       UPDATE vendors 
-      SET total_capacity_mt = $1 
-      WHERE id = $2 
-      RETURNING total_capacity_mt
-    `, [total_capacity_mt, warehouse_id]);
+      SET total_capacity_mt = $1,
+          location = COALESCE($2, location)
+      WHERE id = $3 
+      RETURNING total_capacity_mt, location
+    `, [parseFloat(total_capacity_mt) || 0, location !== undefined ? location : null, warehouse_id]);
 
     res.status(200).json({ success: true, data: result.rows[0] });
   } catch (error) {

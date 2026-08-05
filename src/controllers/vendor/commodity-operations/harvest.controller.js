@@ -8,18 +8,21 @@ export const getProvidersByRole = async (req, res) => {
     // Ensure column exists on vendors table
     await pool.query('ALTER TABLE vendors ADD COLUMN IF NOT EXISTS total_capacity_mt NUMERIC DEFAULT 0');
 
+    // Ensure location column exists on vendors table
+    await pool.query('ALTER TABLE vendors ADD COLUMN IF NOT EXISTS location TEXT');
+
     let query = "";
     let params = [];
     if (searchRole === 'storage') {
-      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, role 
+      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, location, role 
                FROM vendors 
                WHERE LOWER(role) LIKE '%storage%' OR LOWER(role) LIKE '%warehouse%'`;
     } else if (searchRole === 'logistics') {
-      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, role 
+      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, location, role 
                FROM vendors 
                WHERE LOWER(role) LIKE '%logistics%' OR LOWER(role) LIKE '%transport%' OR LOWER(role) LIKE '%courier%'`;
     } else {
-      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, role 
+      query = `SELECT id, fname, lname, company_name, email, phone, workspace, total_capacity_mt, location, role 
                FROM vendors 
                WHERE LOWER(role) LIKE $1`;
       params = [`%${searchRole}%`];
