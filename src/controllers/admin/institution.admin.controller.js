@@ -360,4 +360,99 @@ institutionAdminController.createTrialPlot = async (req, res) => {
    }
 };
 
+// Ecosystem Wallets Directory & Treasury Funding
+institutionAdminController.getEcosystemWallets = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows } = await pool.query(
+         `SELECT 
+            v.id as vendor_id, 
+            COALESCE(NULLIF(TRIM(CONCAT(v.fname, ' ', v.lname)), ''), v.company_name, 'Vendor') as name,
+            v.fname,
+            v.lname,
+            v.email, 
+            v.role, 
+            v.company_name,
+            COALESCE(w.balance, 0) as balance,
+            COALESCE(w.locked_balance, 0) as locked_balance,
+            COALESCE(w.currency, 'NGN') as currency
+          FROM vendors v
+          LEFT JOIN wallets w ON v.id = w.owner_id
+          ORDER BY v.fname ASC, v.lname ASC`
+      );
+
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching ecosystem wallets:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch ecosystem wallets" });
+   }
+};
+
+institutionAdminController.creditUserWallet = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { vendor_id, amount, note } = req.body;
+      const creditAmount = parseFloat(amount);
+
+      if (!vendor_id || isNaN(creditAmount) || creditAmount <= 0) {
+         return res.status(400).json({ success: false, error: "Valid vendor ID and credit amount are required" });
+      }
+
+      const client = await pool.connect();
+      try {
+         await client.query("BEGIN");
+
+         // 1. Check or create vendor wallet
+         let { rows: walletRows } = await client.query("SELECT * FROM wallets WHERE owner_id = $1", [vendor_id]);
+         if (walletRows.length === 0) {
+            const { rows: newW } = await client.query(
+               "INSERT INTO wallets (owner_id, owner_type, balance, locked_balance, status) VALUES ($1, 'user', 0, 0, 'active') RETURNING *",
+               [vendor_id]
+            );
+            walletRows = newW;
+         }
+
+         // 2. Deduct from platform ecosystem treasury if available
+         const { rows: platformRows } = await client.query("SELECT * FROM platform_wallets LIMIT 1");
+         if (platformRows.length > 0) {
+            await client.query("UPDATE platform_wallets SET ecosystem_treasury = ecosystem_treasury - $1 WHERE id = $2", [creditAmount, platformRows[0].id]);
+         }
+
+         // 3. Credit vendor wallet balance
+         const { rows: updatedW } = await client.query(
+            "UPDATE wallets SET balance = balance + $1, updated_at = NOW() WHERE owner_id = $2 RETURNING *",
+            [creditAmount, vendor_id]
+         );
+
+         // 4. Record transaction entry
+         const description = note || `Ecosystem Treasury Funding (${payload.role || 'Finance'})`;
+         await client.query(
+            `INSERT INTO transactions (sender_id, recipient_id, amount, type, description, status)
+             VALUES ($1, $2, $3, 'credit', $4, 'completed')`,
+            [payload.id, vendor_id, creditAmount, description]
+         );
+
+         await client.query("COMMIT");
+
+         return res.status(200).json({
+            success: true,
+            message: "Wallet credited successfully from Ecosystem Treasury",
+            data: updatedW[0]
+         });
+      } catch (e) {
+         await client.query("ROLLBACK");
+         throw e;
+      } finally {
+         client.release();
+      }
+   } catch (error) {
+      console.error("Error crediting user wallet:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to credit user wallet" });
+   }
+};
+
 export default institutionAdminController;
