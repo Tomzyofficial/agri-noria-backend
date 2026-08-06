@@ -1,12 +1,9 @@
 import { z } from "zod";
 import {
   createOrder,
-  //   getOrderById,
   getOrdersByBuyerId,
   getOrdersBySellerId,
   updateOrderStatus,
-  //   updateOrderDelivery,
-  //   cancelOrder,
   getSellerOrderStats,
   getBuyerOrderStats,
 } from "../../db/buyer/orders.db.js";
@@ -14,7 +11,6 @@ import { verifyBuyerToken } from "../../sessions/buyer.auth.session.js";
 import { confirmBuyerSatisfactionWithOTP } from "../../db/logistics/shipment.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
-// Zod schema for order creation
 const orderSchema = z.object({
   buyer_id: z.string().uuid("Invalid buyer ID"),
   seller_id: z.string().uuid("Invalid seller ID"),
@@ -173,6 +169,33 @@ export async function createOrderController(req, res) {
     //    seller_phone: v.seller_phone,
     //  }));
 
+    //  const metadata = {
+    //    buyer_info: {
+    //      fname,
+    //      lname,
+    //      phone,
+    //      email,
+    //    },
+    //    seller_breakdown: vendor,
+    //    logistics_provider: {
+    //      vehicle_id,
+    //      vehicle_title,
+    //      vehicle_type,
+    //      rate_amount,
+    //      base_location,
+    //      operating_regions,
+    //      pricing_model,
+    //      logistics_vendor_id,
+    //      logistics_provider_email,
+    //    },
+    //    amount_breakdown: {
+    //      subtotal,
+    //      discount,
+    //      delivery_fee,
+    //      total_amount,
+    //    },
+    //  };
+
     const metadata = {
       buyer_info: {
         fname,
@@ -198,8 +221,23 @@ export async function createOrderController(req, res) {
         delivery_fee,
         total_amount,
       },
-      // item_breakdown: items,
     };
+
+    const orderItems = vendor.map((v) => ({
+      listing_id: v.listing_id,
+      seller_id: v.seller_id,
+      logistics_id: logistics_vendor_id,
+      rate_amount,
+      listing_name: v.listing_name,
+      product_image: v.product_image,
+      unit: v.unit_measure,
+      unit_price: v.price,
+      quantity: v.quantity,
+      min_quantity: v.min_quantity,
+      discount: v.discount,
+      country_code: v.country_code,
+      currency: v.currency,
+    }));
 
     const order = await createOrder({
       buyer_id: buyerId,
@@ -211,6 +249,7 @@ export async function createOrderController(req, res) {
       delivery_fee,
       notes: `Order from ${fname} ${lname}. Phone: ${phone}`,
       metadata,
+      orderItems,
     });
 
     res.status(201).json({
@@ -528,8 +567,6 @@ export async function confirmBuyerSatisfactionController(req, res) {
 
     const { id: orderId } = req.params;
     const { otp } = req.body;
-
-    console.log("order id from orders controller body", orderId, "otp", otp);
 
     // Validate OTP
     if (!otp || otp.trim().length === 0) {

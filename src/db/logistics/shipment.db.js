@@ -554,7 +554,6 @@ export async function confirmBuyerSatisfactionWithOTP(orderId, otp, buyerId) {
   try {
     await client.query("BEGIN");
 
-    // Verify order belongs to buyer
     const orderQuery = `
       SELECT o.id, o.status, o.buyer_id, ls.id as shipment_id, ls.delivery_otp, 
        ls.delivery_otp_expires_at, ls.buyer_satisfied

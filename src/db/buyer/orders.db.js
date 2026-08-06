@@ -1,41 +1,347 @@
 import pool from "../../lib/connect.js";
 
-// Create a new order
-export async function createOrder(orderData) {
-  const {
-    buyer_id,
-    total_amount,
-    currency,
-    country_code,
-    status = "pending",
-    fulfillment_type = "delivery",
-    delivery_address,
-    notes,
-    metadata = {},
-  } = orderData;
+export function buildSellerPayout(orderId, orderItems) {
+  const payouts = new Map();
+
+  for (const item of orderItems) {
+    const sellerId = item.seller_id;
+
+    const subtotal = item.unit_price * item.quantity;
+
+    const qualifiesForDiscount = item.quantity >= item.min_quantity;
+
+    const discountAmount = qualifiesForDiscount
+      ? subtotal * (item.discount / 100)
+      : 0;
+
+    const sellerAmount = subtotal - discountAmount;
+
+    if (!payouts.has(sellerId)) {
+      payouts.set(sellerId, {
+        order_id: orderId,
+        recipient_vendor_id: sellerId,
+        logistics_vendor_id: item.logistics_id,
+        recipient_type: "seller",
+        payout_type: "seller",
+        gross_amount: sellerAmount,
+        commission_amount: 0,
+        net_amount: sellerAmount,
+        currency: item.currency,
+        //   order_items: [],
+      });
+    }
+
+    //  const payout = payouts.get(sellerId);
+
+    //  payout.gross_amount += Number(item.seller_amount);
+
+    //  payout.commission_amount += Number(item.platform_fee ?? 0);
+
+    //  payout.net_amount = payout.gross_amount - payout.commission_amount;
+
+    //  payout.order_items.push({
+    //    listing_id: item.listing_id,
+    //    quantity: item.quantity,
+    //    seller_amount: item.seller_amount,
+    //  });
+  }
+
+  return [...payouts.values()];
+}
+
+export function buildLogisticsPayout(orderId, orderItems) {
+  const payouts = new Map();
+
+  for (const item of orderItems) {
+    const logisticsId = item.logistics_id;
+
+    //  const subtotal = item.unit_price * item.quantity;
+
+    //  const qualifiesForDiscount = item.quantity >= item.min_quantity;
+
+    //  const discountAmount = qualifiesForDiscount
+    //    ? subtotal * (item.discount / 100)
+    //    : 0;
+
+    //  const sellerAmount = subtotal - discountAmount;
+
+    if (!payouts.has(logisticsId)) {
+      payouts.set(logisticsId, {
+        order_id: orderId,
+        recipient_vendor_id: logisticsId,
+        recipient_type: "logistics",
+        payout_type: "logistics",
+        gross_amount: item.rate_amount,
+        commission_amount: 0,
+        net_amount: item.rate_amount,
+        currency: item.currency,
+        //   order_items: [],
+      });
+    }
+
+    //  const payout = payouts.get(sellerId);
+
+    //  payout.gross_amount += Number(item.seller_amount);
+
+    //  payout.commission_amount += Number(item.platform_fee ?? 0);
+
+    //  payout.net_amount = payout.gross_amount - payout.commission_amount;
+
+    //  payout.order_items.push({
+    //    listing_id: item.listing_id,
+    //    quantity: item.quantity,
+    //    seller_amount: item.seller_amount,
+    //  });
+  }
+
+  return [...payouts.values()];
+}
+
+export async function bulkInsert({
+  client,
+  table,
+  columns,
+  records,
+  returning = "*",
+}) {
+  if (!records || records.length === 0) {
+    return [];
+  }
+
+  const values = [];
+  const placeholders = [];
+
+  records.forEach((record, rowIndex) => {
+    const row = [];
+
+    columns.forEach((column, colIndex) => {
+      values.push(record[column]);
+      row.push(`$${rowIndex * columns.length + colIndex + 1}`);
+    });
+
+    placeholders.push(`(${row.join(", ")})`);
+  });
 
   const query = `
-    INSERT INTO orders (
-      buyer_id, total_amount, currency, country_Code, status,
-      fulfillment_type, delivery_address, notes, metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    RETURNING *
-  `;
+        INSERT INTO ${table}
+        (${columns.join(", ")})
+        VALUES
+        ${placeholders.join(",\n")}
+        RETURNING ${returning};
+    `;
 
-  const values = [
-    buyer_id,
-    total_amount,
-    currency,
-    country_code,
-    status,
-    fulfillment_type,
-    delivery_address,
-    notes,
-    JSON.stringify(metadata),
-  ];
+  const { rows } = await client.query(query, values);
 
-  const result = await pool.query(query, values);
-  return result.rows[0];
+  return rows;
+}
+
+// Create a new order
+export async function createOrder(orderData) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const {
+      buyer_id,
+      total_amount,
+      currency,
+      country_code,
+      status = "pending",
+      fulfillment_type = "delivery",
+      delivery_address,
+      notes,
+      metadata,
+      orderItems,
+    } = orderData;
+
+    const orderQuery = `
+            INSERT INTO orders (
+                buyer_id,
+                total_amount,
+                currency,
+                country_code,
+                status,
+                fulfillment_type,
+                delivery_address,
+                notes,
+                metadata
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            RETURNING *;
+        `;
+
+    const { rows } = await client.query(orderQuery, [
+      buyer_id,
+      total_amount,
+      currency,
+      country_code,
+      status,
+      fulfillment_type,
+      delivery_address,
+      notes,
+      metadata,
+    ]);
+
+    const order = rows[0];
+
+    await createOrderItems(order.id, orderItems, client);
+    //   create payout
+    const sellerPayout = buildSellerPayout(order.id, orderItems);
+    const logisticsPayout = buildLogisticsPayout(order.id, orderItems);
+
+    await createPayout([...sellerPayout, ...logisticsPayout], client);
+
+    await client.query("COMMIT");
+
+    return order;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function createOrderItems(orderId, orderItems, client) {
+  //   for (const item of orderItems) {
+  //     await client.query(
+  //       `
+  //             INSERT INTO order_items (
+  //                 order_id,
+  //                 listing_id,
+  //                 seller_id,
+  //                 logistics_id,
+  //                 listing_name,
+  //                 product_image,
+  //                 unit,
+  //                 quantity,
+  //                 unit_price,
+  //                 subtotal,
+  //                 discount,
+  //                 seller_amount,
+  //                 metadata
+  //             )
+  //             VALUES (
+  //                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+  //             )
+  //              RETURNING *`,
+  //       [
+  //         orderId,
+  //         item.listing_id,
+  //         item.seller_id,
+  //         item.logistics_id,
+  //         item.listing_name,
+  //         item.product_image,
+  //         item.unit,
+  //         item.quantity,
+  //         item.unit_price ?? 0,
+  //         item.subtotal ?? 0,
+  //         item.discount ?? 0,
+  //         item.seller_amount ?? 0,
+  //         item.metadata ?? null,
+  //       ],
+  //     );
+  //   }
+
+  //   return true;
+
+  const records = orderItems.map((item) => {
+    const subtotal = item.unit_price * item.quantity;
+
+    const qualifiesForDiscount = item.quantity >= item.min_quantity;
+
+    const discountAmount = qualifiesForDiscount
+      ? subtotal * (item.discount / 100)
+      : 0;
+
+    const sellerAmount = subtotal - discountAmount;
+    return {
+      order_id: orderId,
+      listing_id: item.listing_id,
+      seller_id: item.seller_id,
+      logistics_id: item.logistics_id,
+      listing_name: item.listing_name,
+      product_image: item.product_image ?? null,
+      unit: item.unit ?? null,
+      quantity: item.quantity,
+      unit_price: item.unit_price ?? 0,
+      discount: item.discount ?? 0,
+      min_quantity: item.min_quantity,
+      seller_amount: sellerAmount ?? 0,
+      metadata: item.metadata ?? null,
+    };
+  });
+
+  return bulkInsert({
+    client,
+    table: "order_items",
+    columns: [
+      "order_id",
+      "listing_id",
+      "seller_id",
+      "logistics_id",
+      "listing_name",
+      "product_image",
+      "unit",
+      "quantity",
+      "unit_price",
+      "discount",
+      "seller_amount",
+      "metadata",
+      "min_quantity",
+    ],
+    records,
+  });
+}
+export async function createPayout(payouts, client) {
+  //   for (const payout of payouts) {
+  //     await client.query(
+  //       `
+  //             INSERT INTO payouts (
+  //                 order_id,
+  //                recipient_vendor_id,
+  //                recipient_type,
+  //                payout_type,
+  //                gross_amount,
+  //                commision_amount,
+  //                net_amount,
+  //                currency,
+  //             )
+  //             VALUES (
+  //                 $1,$2,$3,$4,$5,$6,$7,$8
+  //             )
+  //              RETURNING *`,
+  //       [
+  //         orderId,
+  //         payout.seller_id,
+  //         "vendor",
+  //         "payout",
+  //         payout.subtotal ?? 0,
+  //         0,
+  //         0,
+  //         payout.currency,
+  //       ],
+  //     );
+  //   }
+
+  //   return true;
+
+  return bulkInsert({
+    client,
+    table: "payouts",
+    columns: [
+      "order_id",
+      "recipient_vendor_id",
+      "recipient_type",
+      "payout_type",
+      "gross_amount",
+      "commission_amount",
+      "net_amount",
+      "currency",
+    ],
+    records: payouts,
+  });
 }
 
 // export async function getOrderById(orderId, buyerId) {
@@ -66,7 +372,7 @@ export async function getOrdersByBuyerId(
   const limitIdx = params.length - 1;
   const offsetIdx = params.length;
   const query = `
-   SELECT o.id, o.currency, o.country_code, o.status, o.delivery_address, o.metadata, o.created_at, ls.assigned_driver_name, ls.assigned_driver_phone FROM orders AS o
+   SELECT o.*, ls.assigned_driver_name, ls.assigned_driver_phone FROM orders AS o
    LEFT JOIN logistics_shipments ls ON o.id = ls.order_id WHERE o.buyer_id = $1
    ${statusClause}
     ORDER BY o.created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
@@ -91,9 +397,9 @@ export async function getOrdersBySellerId(
   params.push(limit, offset);
   const limitIdx = params.length - 1;
   const offsetIdx = params.length;
-
+  // o.id, o.currency, o.country_code, o.status, o.delivery_address, o.created_at, o.metadata,
   const query = `
-  SELECT o.id, o.currency, o.country_code, o.status, o.delivery_address, o.created_at, ls.assigned_driver_name, ls.assigned_driver_phone FROM orders o LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
+  SELECT o.*, ls.assigned_driver_name, ls.assigned_driver_phone FROM orders o LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
    WHERE o.metadata->'seller_breakdown' @> jsonb_build_array(
     jsonb_build_object('seller_id', $1::text))
    ${statusClause}
@@ -122,8 +428,7 @@ export async function updateOrderDelivery(orderId, deliveryData) {
   const { actual_delivery_time, notes } = deliveryData;
 
   const query = `
-    UPDATE orders
-    SET 
+    UPDATE orders SET 
       status = 'delivered',
       actual_delivery_time = COALESCE($1, NOW()),
       notes = COALESCE($2, notes),

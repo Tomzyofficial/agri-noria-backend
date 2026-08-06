@@ -112,6 +112,34 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL,
+    listing_id UUID NOT NULL,
+    seller_id UUID NOT NULL,
+    logistics_id UUID NOT NULL,
+    listing_name VARCHAR(255) NOT NULL,
+    product_image TEXT,
+    unit VARCHAR(50),
+    quantity DECIMAL(12,2) NOT NULL,
+    unit_price DECIMAL(15,2) NOT NULL,
+   --  subtotal DECIMAL(15,2) NOT NULL,
+    discount DECIMAL(15,2) DEFAULT 0,
+    seller_amount DECIMAL(15,2) NOT NULL,
+   --  platform_fee DECIMAL(15,2) DEFAULT 0,
+    delivered_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    refunded_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    escrow_status TEXT DEFAULT 'pending', 
+    min_quantity INTEGER,
+    CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_order_items_listing FOREIGN KEY (listing_id) REFERENCES listings(id),
+    CONSTRAINT fk_order_items_seller FOREIGN KEY (seller_id) REFERENCES vendors(id),
+    CONSTRAINT fk_order_logistics FOREIGN KEY (logistics_id) REFERENCES vendors(id)
+);
+
 -- Indexes for orders
 CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON orders(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -293,7 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_delivery_confirmations_otp_code ON delivery_confi
 CREATE TABLE IF NOT EXISTS escrow_releases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
-    payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+   --  payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     
     status VARCHAR(30) DEFAULT 'held', -- held, completed, failed
@@ -521,14 +549,16 @@ CREATE TABLE IF NOT EXISTS payouts (
 
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    payment_id UUID NOT NULL
-        REFERENCES payments(id) ON DELETE CASCADE,
+   --  payment_id UUID NOT NULL
+   --      REFERENCES payments(id) ON DELETE CASCADE,
 
     order_id UUID NOT NULL
         REFERENCES orders(id) ON DELETE CASCADE,
 
     recipient_vendor_id UUID NOT NULL
         REFERENCES vendors(id),
+   --  logistics_vendor_id UUID NOT NULL
+   --      REFERENCES vendors(id),
 
     recipient_type VARCHAR(30) NOT NULL,
 

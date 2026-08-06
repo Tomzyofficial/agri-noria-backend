@@ -41,22 +41,33 @@ export async function getBuyerCheckoutData(buyerId) {
           seller_lname: row.seller_lname,
           seller_phone: row.seller_phone,
           seller_email: row.seller_email,
-          items: [],
+          listing_id: row.listing_id,
+          product_image: row.product_image,
+          listing_name: row.listing_name,
+          listing_location: row.seller_pickup_address,
+          price: row.price,
+          unit_measure: row.unit_measure,
+          quantity: row.quantity,
+          min_quantity: row.min_quantity,
+          discount: row.discount,
+          country_code: row.country_code,
+          currency: row.currency,
+          //  items: [],
         });
       }
-      sellersMap.get(sellerId).items.push({
-        listing_id: row.listing_id,
-        product_image: row.product_image,
-        listing_name: row.listing_name,
-        listing_location: row.seller_pickup_address,
-        price: row.price,
-        unit_measure: row.unit_measure,
-        quantity: row.quantity,
-        min_quantity: row.min_quantity,
-        discount: row.discount,
-        country_code: row.country_code,
-        currency: row.currency,
-      });
+      // sellersMap.get(sellerId).items.push({
+      //   listing_id: row.listing_id,
+      //   product_image: row.product_image,
+      //   listing_name: row.listing_name,
+      //   listing_location: row.seller_pickup_address,
+      //   price: row.price,
+      //   unit_measure: row.unit_measure,
+      //   quantity: row.quantity,
+      //   min_quantity: row.min_quantity,
+      //   discount: row.discount,
+      //   country_code: row.country_code,
+      //   currency: row.currency,
+      // });
     });
 
     const vendors = Array.from(sellersMap.values());
