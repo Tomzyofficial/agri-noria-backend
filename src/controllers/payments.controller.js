@@ -137,7 +137,7 @@ export async function initializeBuyerPayment(req, res) {
 export async function verifyBuyerPayment(req, res) {
   try {
     const payload = await verifyBuyerToken(req);
-    if (!payload?.buyer_id) {
+    if (!payload) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 

@@ -173,7 +173,7 @@ const LOGISTICS_ORDERS_BASE_JOIN = `
    FROM orders
    WHERE metadata->'logistics_provider' @> jsonb_build_object('logistics_vendor_id', $1::text)`;
 
-/** Orders assigned to this logistics partner via vehicle metadata */
+/** Orders assigned to this logistics partner */
 export async function getOrdersByLogisticsVendorId(
   vendorId,
   { status, limit = 50, offset = 0 } = {},
@@ -191,7 +191,7 @@ export async function getOrdersByLogisticsVendorId(
   const offsetIdx = params.length;
 
   const query = `
-     SELECT id, currency, country_code, status, delivery_address, created_at
+     SELECT id, currency, country_code, status, delivery_address, created_at, metadata
      ${LOGISTICS_ORDERS_BASE_JOIN}
       ${statusClause}
       ORDER BY created_at DESC
@@ -223,29 +223,30 @@ export async function getLogisticsOrderStats(vendorId) {
   return result.rows[0];
 }
 
-/** Ensure order belongs to this logistics vendor's vehicle */
+/** Ensure order belongs to this logistics vendor's vehicle. This function is used during when logistics vendor wants to start shipment */
 export async function getLogisticsOrderForVendor(orderId, vendorId) {
-  const query = `
-    SELECT
-      o.*,
-      b.name AS buyer_name,
-      b.email AS buyer_email,
-      v.fname AS seller_fname,
-      v.lname AS seller_lname,
-      v.email AS seller_email,
-      v.phone AS seller_phone,
-      vd.business_name AS seller_business_name,
-      veh.id AS vehicle_id,
-      veh.title AS vehicle_title,
-      veh.vendor_id AS logistics_vendor_id
-    FROM orders o
-    INNER JOIN vehicles veh
-      ON (o.metadata->'logistics_provider'->>'vehicle_id')::uuid = veh.id
-    LEFT JOIN buyers b ON o.buyer_id = b.buyer_id
-    LEFT JOIN vendors v ON o.seller_id = v.id
-    LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
-    WHERE o.id = $1 AND veh.vendor_id = $2
-  `;
+  //   const query = `
+  //     SELECT
+  //       o.*,
+  //       b.name AS buyer_name,
+  //       b.email AS buyer_email,
+  //       v.fname AS seller_fname,
+  //       v.lname AS seller_lname,
+  //       v.email AS seller_email,
+  //       v.phone AS seller_phone,
+  //       vd.business_name AS seller_business_name,
+  //       veh.id AS vehicle_id,
+  //       veh.title AS vehicle_title,
+  //       veh.vendor_id AS logistics_vendor_id
+  //     FROM orders o
+  //     INNER JOIN vehicles veh
+  //       ON (o.metadata->'logistics_provider'->>'vehicle_id')::uuid = veh.id
+  //     LEFT JOIN buyers b ON o.buyer_id = b.buyer_id
+  //     LEFT JOIN vendors v ON o.seller_id = v.id
+  //     LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
+  //     WHERE o.id = $1 AND veh.vendor_id = $2
+  //   `;
+  const query = `SELECT * FROM orders WHERE id = $1 AND metadata->'logistics_provider'->>'logistics_vendor_id' = $2`;
   const result = await pool.query(query, [orderId, vendorId]);
   return result.rows[0] || null;
 }
@@ -303,19 +304,14 @@ export async function findAlternativeVehicle(
   return result.rows[0] || null;
 }
 
-export async function updateOrderForLogistics(
-  orderId,
-  { status, metadata, delivery_fee },
-) {
+export async function updateOrderForLogistics(orderId, { status, metadata }) {
   const query = `
-    UPDATE orders SET status = COALESCE($1, status), metadata = COALESCE($2::jsonb, metadata),
-   delivery_fee = COALESCE($3, delivery_fee), updated_at = NOW() WHERE id = $4
+    UPDATE orders SET status = COALESCE($1, status), metadata = COALESCE($2::jsonb, metadata), updated_at = NOW() WHERE id = $3
     RETURNING *
   `;
   const result = await pool.query(query, [
     status || null,
     metadata ? JSON.stringify(metadata) : null,
-    delivery_fee ?? null,
     orderId,
   ]);
   return result.rows[0];
@@ -457,16 +453,9 @@ export async function getShipmentOrdersByLogisticsVendorId(
   { limit = 50, offset = 0 } = {},
 ) {
   const query = `
-    SELECT
-      o.*,
-      b.name AS buyer_name,
-      b.email AS buyer_email,
-      v.fname AS seller_fname,
-      v.lname AS seller_lname,
-      veh.title AS vehicle_title
-    ${LOGISTICS_ORDERS_BASE_JOIN}
-      AND o.status IN ('processing', 'in_transit')
-    ORDER BY o.updated_at DESC
+    SELECT * ${LOGISTICS_ORDERS_BASE_JOIN}
+      AND status IN ('processing', 'in_transit')
+    ORDER BY updated_at DESC
     LIMIT $2 OFFSET $3
   `;
   const result = await pool.query(query, [vendorId, limit, offset]);
@@ -481,7 +470,7 @@ export async function startLogisticsShipment(orderId, vendorId) {
       error: "Order not found for this logistics partner",
     };
   }
-  if (!["processing", "shipped"].includes(order.status)) {
+  if (!["processing"].includes(order.status)) {
     return {
       success: false,
       error: `Shipment can only start from processing/shipped (current: ${order.status})`,

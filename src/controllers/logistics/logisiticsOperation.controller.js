@@ -5,7 +5,7 @@ import {
   getLogisticsProvidersNearBuyer,
   getOrdersByLogisticsVendorId,
   getLogisticsOrderStats,
-  getLogisticsOrderDetail,
+  //   getLogisticsOrderDetail,
   acceptLogisticsOrder,
   declineLogisticsOrder,
   getShipmentOrdersByLogisticsVendorId,
@@ -235,7 +235,7 @@ logisiticsOperation.getLogisticsOrderStats = async (req, res) => {
   if (!isLogisticsPartner(payload)) {
     return res.status(403).json({
       success: false,
-      error: "Only logistics partners can access order statistics",
+      error: "Unauthorized to access this page",
     });
   }
 
@@ -262,7 +262,7 @@ logisiticsOperation.getLogisticsOrders = async (req, res) => {
   if (!isLogisticsPartner(payload)) {
     return res.status(403).json({
       success: false,
-      error: "Only logistics partners can access orders",
+      error: "Unauthorized to access this page",
     });
   }
 
@@ -328,7 +328,9 @@ logisiticsOperation.acceptLogisticsOrder = async (req, res) => {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
   if (!isLogisticsPartner(payload)) {
-    return res.status(403).json({ success: false, error: "Forbidden" });
+    return res
+      .status(403)
+      .json({ success: false, error: "Unauthorized to access this page" });
   }
 
   try {
@@ -434,7 +436,7 @@ logisiticsOperation.getLogisticsShipments = async (req, res) => {
   }
 }; */
 
-// Enhanced shipment start with full validation and confirmation
+// Enhanced shipment start with full validation and confirmation when logistics partner starts order shipment
 logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
   const payload = await verifyVendorToken(req);
   if (!payload?.id) {
@@ -570,8 +572,10 @@ logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
     }
 
     // Send shipment start email to buyer
+    const meta = order.metadata?.buyer_info;
+
     const emailData = {
-      buyer_name: order.buyer_name,
+      buyer_name: `${meta.fname} ${meta.lname}`,
       order_number: orderId,
       tracking_number: shipmentResult.data.tracking_number,
       driver_name: assigned_driver_name,
@@ -584,7 +588,7 @@ logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
     };
 
     const emailResult = await emailService.sendShipmentStartEmail(
-      order.buyer_email,
+      meta.email,
       emailData,
     );
 

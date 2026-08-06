@@ -10,6 +10,7 @@ import {
   getBuyerOrderStatsController,
   confirmBuyerSatisfactionController,
 } from "../../controllers/buyer/orders.controller.js";
+import { verifyOrderController } from "../../db/buyer/verifiyorder-new.js";
 
 const ordersRoute = express.Router();
 
@@ -43,5 +44,11 @@ ordersRoute.post(
   "/orders/:id/confirm-satisfaction",
   confirmBuyerSatisfactionController,
 );
+
+// ordersRoute.post(
+//   "/orders/:orderId/confirm-satisfaction",
+//   verifyOrderController,
+// );
+
 
 export default ordersRoute;

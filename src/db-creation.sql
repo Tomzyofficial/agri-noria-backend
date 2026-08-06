@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS vendor_bank_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
   bank_name TEXT NOT NULL,
+  bank_code TEXT,
+  paystack_recipient_code TEXT,
   account_name TEXT NOT NULL,
   account_number TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()

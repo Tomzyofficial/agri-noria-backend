@@ -47,7 +47,7 @@ class EmailService {
     return hashedPlain === hashedCode;
   }
 
-  // Send verification email
+  // Send verification email used during vendor registration
   async sendVerificationEmail(email, verificationCode) {
     try {
       const mailOptions = {
@@ -69,7 +69,7 @@ class EmailService {
     }
   }
 
-  // Send welcome email after successful verification
+  // Send welcome email after successful verification and registration
   async sendWelcomeEmail(email, name, userType) {
     try {
       const mailOptions = {
@@ -174,7 +174,7 @@ class EmailService {
     }
   }
 
-  // Send shipment start email to buyer
+  // Send shipment start email to buyer. Used inside logisticsOperationController file
   async sendShipmentStartEmail(buyerEmail, shipmentData) {
     try {
       const mailOptions = {
@@ -204,7 +204,7 @@ class EmailService {
     }
   }
 
-  // Send all three emails for order notification (buyer, seller, logistics)
+  // Send all three emails for order notification (buyer, seller, logistics) used inside payment controller file
   async sendOrderNotificationEmails(emailData) {
     try {
       const results = {
