@@ -375,11 +375,12 @@ institutionAdminController.getEcosystemWallets = async (req, res) => {
             v.email, 
             v.role, 
             v.company_name,
-            COALESCE(w.balance, 0) as balance,
-            COALESCE(w.locked_balance, 0) as locked_balance,
-            COALESCE(w.currency, 'NGN') as currency
+            COALESCE(MAX(w.balance), 0) as balance,
+            COALESCE(MAX(w.locked_balance), 0) as locked_balance,
+            COALESCE(MAX(w.currency), 'NGN') as currency
           FROM vendors v
-          LEFT JOIN wallets w ON v.id = w.owner_id
+          LEFT JOIN wallets w ON v.id = w.owner_id AND LOWER(w.owner_type) = LOWER(v.role)
+          GROUP BY v.id
           ORDER BY v.fname ASC, v.lname ASC`
       );
 
@@ -406,34 +407,44 @@ institutionAdminController.creditUserWallet = async (req, res) => {
       try {
          await client.query("BEGIN");
 
-         // 1. Check or create vendor wallet
-         let { rows: walletRows } = await client.query("SELECT * FROM wallets WHERE owner_id = $1", [vendor_id]);
+         // 1. Get vendor role to match correct wallet owner_type
+         const { rows: vRows } = await client.query("SELECT role FROM vendors WHERE id = $1", [vendor_id]);
+         const vendorRole = vRows.length > 0 ? (vRows[0].role || 'user').toLowerCase() : 'user';
+
+         // 2. Check or create vendor's role-specific wallet
+         let { rows: walletRows } = await client.query("SELECT * FROM wallets WHERE owner_id = $1 AND LOWER(owner_type) = $2", [vendor_id, vendorRole]);
          if (walletRows.length === 0) {
             const { rows: newW } = await client.query(
-               "INSERT INTO wallets (owner_id, owner_type, balance, locked_balance, status) VALUES ($1, 'user', 0, 0, 'active') RETURNING *",
-               [vendor_id]
+               "INSERT INTO wallets (owner_id, owner_type, balance, locked_balance, status) VALUES ($1, $2, 0, 0, 'active') RETURNING *",
+               [vendor_id, vendorRole]
             );
             walletRows = newW;
          }
 
-         // 2. Deduct from platform ecosystem treasury if available
-         const { rows: platformRows } = await client.query("SELECT * FROM platform_wallets LIMIT 1");
-         if (platformRows.length > 0) {
-            await client.query("UPDATE platform_wallets SET ecosystem_treasury = ecosystem_treasury - $1 WHERE id = $2", [creditAmount, platformRows[0].id]);
+         // 2. Deduct from platform ecosystem treasury (finance_wallets)
+         const { rows: financeRows } = await client.query("SELECT * FROM finance_wallets WHERE finance_user_id = $1 LIMIT 1", [payload.id]);
+         if (financeRows.length > 0) {
+            await client.query("UPDATE finance_wallets SET balance = balance - $1 WHERE id = $2", [creditAmount, financeRows[0].id]);
+         } else {
+            // If the specific finance user doesn't have a wallet, just take from the first one or ignore
+            const { rows: anyFinance } = await client.query("SELECT * FROM finance_wallets LIMIT 1");
+            if (anyFinance.length > 0) {
+               await client.query("UPDATE finance_wallets SET balance = balance - $1 WHERE id = $2", [creditAmount, anyFinance[0].id]);
+            }
          }
 
          // 3. Credit vendor wallet balance
          const { rows: updatedW } = await client.query(
-            "UPDATE wallets SET balance = balance + $1, updated_at = NOW() WHERE owner_id = $2 RETURNING *",
-            [creditAmount, vendor_id]
+            "UPDATE wallets SET balance = balance + $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+            [creditAmount, walletRows[0].id]
          );
 
          // 4. Record transaction entry
          const description = note || `Ecosystem Treasury Funding (${payload.role || 'Finance'})`;
          await client.query(
-            `INSERT INTO transactions (sender_id, recipient_id, amount, type, description, status)
-             VALUES ($1, $2, $3, 'credit', $4, 'completed')`,
-            [payload.id, vendor_id, creditAmount, description]
+            `INSERT INTO wallet_transactions (wallet_id, type, amount, description, reference_type, status)
+             VALUES ($1, 'credit', $2, $3, 'treasury_funding', 'completed')`,
+            [walletRows[0].id, creditAmount, description]
          );
 
          await client.query("COMMIT");
