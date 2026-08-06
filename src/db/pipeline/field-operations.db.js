@@ -41,7 +41,7 @@ export const createInspection = async (data) => {
 // Farmers list for the dropdown
 export const getFarmersForDropdown = async () => {
     const query = `
-       SELECT fp.id as farmer_id, v.fname, v.lname, v.phone, fp.ain, f.boundary_polygon, f.farm_size_hectares
+       SELECT fp.id as farmer_id, v.fname, v.lname, v.phone, fp.nin, f.boundary_polygon, f.farm_size_hectares
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN farms f ON v.id = f.vendor_id
