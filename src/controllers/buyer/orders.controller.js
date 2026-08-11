@@ -3,12 +3,12 @@ import {
   createOrder,
   getOrdersByBuyerId,
   getOrdersBySellerId,
-  updateOrderStatus,
+  //   updateOrderStatus,
   getSellerOrderStats,
   getBuyerOrderStats,
 } from "../../db/buyer/orders.db.js";
 import { verifyBuyerToken } from "../../sessions/buyer.auth.session.js";
-import { confirmBuyerSatisfactionWithOTP } from "../../db/logistics/shipment.db.js";
+// import { confirmBuyerSatisfactionWithOTP } from "../../db/logistics/shipment.db.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const orderSchema = z.object({
@@ -110,6 +110,8 @@ export async function createOrderController(req, res) {
       operating_regions,
       pricing_model,
       logistics_provider_email,
+      logistics_provider_fname,
+      logistics_provider_lname,
     } = req.body;
 
     // Validate required fields
@@ -147,55 +149,6 @@ export async function createOrderController(req, res) {
     const { subtotal, discount, delivery_fee, total_amount } =
       calculateCheckoutAmounts(cart, rate_amount);
 
-    // Prepare order items
-    //  const items = cart.map((item) => ({
-    //    product_id: item.product_id,
-    //    quantity: item.quantity,
-    //    listing_location: item.listing_location,
-    //    unit_price: item.price,
-    //    packaging_type: item.unit_measure,
-    //    unit_measure: item.unit_measure,
-    //    product_name: item.listing_name,
-    //    product_image: item.product_image,
-    //    country_code: item.country_code,
-    //    currency: item.currency,
-    //  }));
-
-    //  const vendorInfo = vendor.map((v) => ({
-    //    seller_id: v.seller_id,
-    //    seller_fname: v.seller_fname,
-    //    seller_lname: v.seller_lname,
-    //    seller_email: v.seller_email,
-    //    seller_phone: v.seller_phone,
-    //  }));
-
-    //  const metadata = {
-    //    buyer_info: {
-    //      fname,
-    //      lname,
-    //      phone,
-    //      email,
-    //    },
-    //    seller_breakdown: vendor,
-    //    logistics_provider: {
-    //      vehicle_id,
-    //      vehicle_title,
-    //      vehicle_type,
-    //      rate_amount,
-    //      base_location,
-    //      operating_regions,
-    //      pricing_model,
-    //      logistics_vendor_id,
-    //      logistics_provider_email,
-    //    },
-    //    amount_breakdown: {
-    //      subtotal,
-    //      discount,
-    //      delivery_fee,
-    //      total_amount,
-    //    },
-    //  };
-
     const metadata = {
       buyer_info: {
         fname,
@@ -214,6 +167,8 @@ export async function createOrderController(req, res) {
         pricing_model,
         logistics_vendor_id,
         logistics_provider_email,
+        logistics_provider_fname,
+        logistics_provider_lname,
       },
       amount_breakdown: {
         subtotal,
@@ -269,44 +224,10 @@ export async function createOrderController(req, res) {
     console.error("Error creating order:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to place your order. PLease try again later",
+      error: "Failed to place your order. Please try again later",
     });
   }
 }
-
-// Get order by ID
-// export async function getOrderByIdController(req, res) {
-//   try {
-//     const { id } = req.params;
-//     const payload = await verifyBuyerToken(req);
-
-//     if (!id) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Order ID is required",
-//       });
-//     }
-
-//     const result = await getOrderById(id, payload.buyer_id);
-//     if (!result) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Order not found",
-//       });
-//     }
-//     res.status(200).json({
-//       success: true,
-//       data: result,
-//     });
-//   } catch (error) {
-//     console.error("Error getting order:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Failed to get order",
-//       error: error.message,
-//     });
-//   }
-// }
 
 // Get orders by buyer ID
 export async function getBuyerOrdersController(req, res) {
@@ -401,72 +322,10 @@ export async function getSellerOrdersController(req, res) {
 }
 
 // Update order status
-export async function updateOrderStatusController(req, res) {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Order ID is required",
-      });
-    }
-
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        message: "Status is required",
-      });
-    }
-
-    const validStatuses = [
-      "pending",
-      "paid",
-      "processing",
-      "shipped",
-      "in_transit",
-      "delivered",
-      "completed",
-      "cancelled",
-      "refunded",
-    ];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status value",
-      });
-    }
-
-    const order = await updateOrderStatus(id, status);
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Order status updated successfully",
-      data: order,
-    });
-  } catch (error) {
-    console.error("Error updating order status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update order status",
-      error: error.message,
-    });
-  }
-}
-
-// Cancel order
-// export async function cancelOrderController(req, res) {
+// export async function updateOrderStatusController(req, res) {
 //   try {
 //     const { id } = req.params;
-//     const { reason } = req.body;
+//     const { status } = req.body;
 
 //     if (!id) {
 //       return res.status(400).json({
@@ -475,25 +334,50 @@ export async function updateOrderStatusController(req, res) {
 //       });
 //     }
 
-//     const order = await cancelOrder(id, reason);
+//     if (!status) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Status is required",
+//       });
+//     }
+
+//     const validStatuses = [
+//       "pending",
+//       "paid",
+//       "processing",
+//       "shipped",
+//       "in_transit",
+//       "delivered",
+//       "completed",
+//       "cancelled",
+//       "refunded",
+//     ];
+//     if (!validStatuses.includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid status value",
+//       });
+//     }
+
+//     const order = await updateOrderStatus(id, status);
 
 //     if (!order) {
 //       return res.status(404).json({
 //         success: false,
-//         message: "Order not found or cannot be cancelled",
+//         message: "Order not found",
 //       });
 //     }
 
 //     res.status(200).json({
 //       success: true,
-//       message: "Order cancelled successfully",
+//       message: "Order status updated successfully",
 //       data: order,
 //     });
 //   } catch (error) {
-//     console.error("Error cancelling order:", error);
+//     console.error("Error updating order status:", error);
 //     res.status(500).json({
 //       success: false,
-//       message: "Failed to cancel order",
+//       message: "Failed to update order status",
 //       error: error.message,
 //     });
 //   }
@@ -554,55 +438,55 @@ export async function getBuyerOrderStatsController(req, res) {
 }
 
 // Confirm buyer satisfaction with OTP verification
-export async function confirmBuyerSatisfactionController(req, res) {
-  try {
-    const payload = await verifyBuyerToken(req);
+// export async function confirmBuyerSatisfactionController(req, res) {
+//   try {
+//     const payload = await verifyBuyerToken(req);
 
-    if (!payload) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
+//     if (!payload) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized",
+//       });
+//     }
 
-    const { id: orderId } = req.params;
-    const { otp } = req.body;
+//     const { id: orderId } = req.params;
+//     const { otp } = req.body;
 
-    // Validate OTP
-    if (!otp || otp.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "OTP is required",
-      });
-    }
+//     // Validate OTP
+//     if (!otp || otp.trim().length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "OTP is required",
+//       });
+//     }
 
-    if (otp.length !== 6) {
-      return res.status(400).json({
-        success: false,
-        error: "OTP must be 6 digits",
-      });
-    }
+//     if (otp.length !== 6) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "OTP must be 6 digits",
+//       });
+//     }
 
-    const result = await confirmBuyerSatisfactionWithOTP(
-      orderId,
-      otp.trim(),
-      payload.buyer_id,
-    );
+//     const result = await confirmBuyerSatisfactionWithOTP(
+//       orderId,
+//       otp.trim(),
+//       payload.buyer_id,
+//     );
 
-    if (!result.success) {
-      return res.status(400).json(result);
-    }
+//     if (!result.success) {
+//       return res.status(400).json(result);
+//     }
 
-    res.status(200).json({
-      success: true,
-      message: "Buyer satisfaction confirmed successfully",
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("Error confirming buyer satisfaction:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to confirm buyer satisfaction",
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       message: "Buyer satisfaction confirmed successfully",
+//       data: result.data,
+//     });
+//   } catch (error) {
+//     console.error("Error confirming buyer satisfaction:", error);
+//     res.status(500).json({
+//       success: false,
+//       error: error.message || "Failed to confirm buyer satisfaction",
+//     });
+//   }
+// }

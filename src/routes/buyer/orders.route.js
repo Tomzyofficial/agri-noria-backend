@@ -1,16 +1,14 @@
 import express from "express";
 import {
   createOrderController,
-  //   getOrderByIdController,
   getBuyerOrdersController,
   getSellerOrdersController,
-  updateOrderStatusController,
-  //   cancelOrderController,
+  //   updateOrderStatusController,
   getSellerOrderStatsController,
   getBuyerOrderStatsController,
-  confirmBuyerSatisfactionController,
+  //   confirmBuyerSatisfactionController,
 } from "../../controllers/buyer/orders.controller.js";
-import { verifyOrderController } from "../../db/buyer/verifiyorder-new.js";
+import { confirmOrder } from "../../controllers/buyer/confirm-order.controller.js";
 
 const ordersRoute = express.Router();
 
@@ -30,25 +28,16 @@ ordersRoute.get("/orders/seller/stats", getSellerOrderStatsController);
 // Get orders by seller ID
 ordersRoute.get("/orders/seller", getSellerOrdersController);
 
-// Get order by ID (parameterized - AFTER specific routes)
-// ordersRoute.get("/orders/:id", getOrderByIdController);
-
 // Update order status
-ordersRoute.put("/orders/:id/status", updateOrderStatusController);
-
-// Cancel order
-// ordersRoute.put("/orders/:id/cancel", cancelOrderController);
+// ordersRoute.put("/orders/:id/status", updateOrderStatusController);
 
 // Confirm buyer satisfaction with OTP
-ordersRoute.post(
-  "/orders/:id/confirm-satisfaction",
-  confirmBuyerSatisfactionController,
-);
-
 // ordersRoute.post(
-//   "/orders/:orderId/confirm-satisfaction",
-//   verifyOrderController,
+//   "/orders/:id/confirm-satisfaction",
+//   confirmBuyerSatisfactionController,
 // );
 
+// Confirm order
+ordersRoute.patch("/orders/:orderId/confirm-satisfaction", confirmOrder);
 
 export default ordersRoute;

@@ -11,7 +11,6 @@ import {
   handleEcosystemOrderPayment,
 } from "./paystack.webhook.helpers.js";
 import crypto from "crypto";
-import { handlePaystackTransferEvent } from "../../db/buyer/paystackwebhook.helper-new.js";
 
 const LOG = (label, data) => {
   const timestamp = new Date().toISOString();
@@ -45,12 +44,10 @@ export const webhook = async (req, res) => {
     // Validate event structure
     const event = req.body;
 
-    
     if (!event || !event.event || !event.data) {
-       LOG("WEBHOOK_INVALID_EVENT_STRUCTURE", { event });
-       return res.status(400).send("Invalid event structure");
-      }
-      await handlePaystackTransferEvent(event);
+      LOG("WEBHOOK_INVALID_EVENT_STRUCTURE", { event });
+      return res.status(400).send("Invalid event structure");
+    }
 
     const metadata = event.data?.metadata;
     const category = metadata?.category;

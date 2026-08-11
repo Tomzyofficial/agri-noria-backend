@@ -2,17 +2,17 @@ import { z } from "zod";
 import pool from "../lib/connect.js";
 import {
   createPayment,
-  getPaymentById,
-  getPaymentByOrderId,
+  //   getPaymentById,
+  //   getPaymentByOrderId,
   getPaymentByReference,
   updatePaymentStatus,
-  updateEscrowStatus,
-  getPaymentsByPayerId,
-  getPaymentsBySellerId,
-  getHeldEscrowPayments,
-  refundPayment,
-  getSellerPaymentStats,
-  getPayerPaymentStats,
+  //   updateEscrowStatus,
+  //   getPaymentsByPayerId,
+  //   getPaymentsBySellerId,
+  //   getHeldEscrowPayments,
+  //   refundPayment,
+  //   getSellerPaymentStats,
+  //   getPayerPaymentStats,
 } from "../db/payments.db.js";
 import {
   initializePaystack,
@@ -264,404 +264,404 @@ export async function verifyBuyerPayment(req, res) {
 }
 
 // Get payment by ID
-export async function getPaymentByIdController(req, res) {
-  try {
-    const { id } = req.params;
+// export async function getPaymentByIdController(req, res) {
+//   try {
+//     const { id } = req.params;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment ID is required",
-      });
-    }
+//     if (!id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Payment ID is required",
+//       });
+//     }
 
-    const payment = await getPaymentById(id);
+//     const payment = await getPaymentById(id);
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
+//     if (!payment) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Payment not found",
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      data: payment,
-    });
-  } catch (error) {
-    console.error("Error getting payment:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get payment",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: payment,
+//     });
+//   } catch (error) {
+//     console.error("Error getting payment:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get payment",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get payment by order ID
-export async function getPaymentByOrderIdController(req, res) {
-  try {
-    const { order_id } = req.params;
+// export async function getPaymentByOrderIdController(req, res) {
+//   try {
+//     const { order_id } = req.params;
 
-    if (!order_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Order ID is required",
-      });
-    }
+//     if (!order_id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Order ID is required",
+//       });
+//     }
 
-    const payment = await getPaymentByOrderId(order_id);
+//     const payment = await getPaymentByOrderId(order_id);
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found for this order",
-      });
-    }
+//     if (!payment) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Payment not found for this order",
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      data: payment,
-    });
-  } catch (error) {
-    console.error("Error getting payment by order:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get payment",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: payment,
+//     });
+//   } catch (error) {
+//     console.error("Error getting payment by order:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get payment",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get payment by provider reference (for webhooks)
-export async function getPaymentByReferenceController(req, res) {
-  try {
-    const { reference } = req.params;
+// export async function getPaymentByReferenceController(req, res) {
+//   try {
+//     const { reference } = req.params;
 
-    if (!reference) {
-      return res.status(400).json({
-        success: false,
-        message: "Reference is required",
-      });
-    }
+//     if (!reference) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Reference is required",
+//       });
+//     }
 
-    const payment = await getPaymentByReference(reference);
+//     const payment = await getPaymentByReference(reference);
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
+//     if (!payment) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Payment not found",
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      data: payment,
-    });
-  } catch (error) {
-    console.error("Error getting payment by reference:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get payment",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: payment,
+//     });
+//   } catch (error) {
+//     console.error("Error getting payment by reference:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get payment",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Update payment status (for webhooks)
-export async function updatePaymentStatusController(req, res) {
-  try {
-    const { id } = req.params;
-    const { status, provider_reference, provider_payment_code, metadata } =
-      req.body;
+// export async function updatePaymentStatusController(req, res) {
+//   try {
+//     const { id } = req.params;
+//     const { status, provider_reference, provider_payment_code, metadata } =
+//       req.body;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment ID is required",
-      });
-    }
+//     if (!id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Payment ID is required",
+//       });
+//     }
 
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        message: "Status is required",
-      });
-    }
+//     if (!status) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Status is required",
+//       });
+//     }
 
-    const validStatuses = [
-      "pending",
-      "processing",
-      "completed",
-      "failed",
-      "refunded",
-    ];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status value",
-      });
-    }
+//     const validStatuses = [
+//       "pending",
+//       "processing",
+//       "completed",
+//       "failed",
+//       "refunded",
+//     ];
+//     if (!validStatuses.includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid status value",
+//       });
+//     }
 
-    const payment = await updatePaymentStatus(id, status, {
-      provider_reference,
-      provider_payment_code,
-      metadata,
-    });
+//     const payment = await updatePaymentStatus(id, status, {
+//       provider_reference,
+//       provider_payment_code,
+//       metadata,
+//     });
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
+//     if (!payment) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Payment not found",
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      message: "Payment status updated successfully",
-      data: payment,
-    });
-  } catch (error) {
-    console.error("Error updating payment status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update payment status",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       message: "Payment status updated successfully",
+//       data: payment,
+//     });
+//   } catch (error) {
+//     console.error("Error updating payment status:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to update payment status",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Update escrow status
-export async function updateEscrowStatusController(req, res) {
-  try {
-    const { id } = req.params;
-    const { escrow_status, release_reason } = req.body;
+// export async function updateEscrowStatusController(req, res) {
+//   try {
+//     const { id } = req.params;
+//     const { escrow_status, release_reason } = req.body;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment ID is required",
-      });
-    }
+//     if (!id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Payment ID is required",
+//       });
+//     }
 
-    if (!escrow_status) {
-      return res.status(400).json({
-        success: false,
-        message: "Escrow status is required",
-      });
-    }
+//     if (!escrow_status) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Escrow status is required",
+//       });
+//     }
 
-    const validEscrowStatuses = ["held", "released", "refunded", "disputed"];
-    if (!validEscrowStatuses.includes(escrow_status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid escrow status value",
-      });
-    }
+//     const validEscrowStatuses = ["held", "released", "refunded", "disputed"];
+//     if (!validEscrowStatuses.includes(escrow_status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid escrow status value",
+//       });
+//     }
 
-    const payment = await updateEscrowStatus(id, escrow_status, release_reason);
+//     const payment = await updateEscrowStatus(id, escrow_status, release_reason);
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
+//     if (!payment) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Payment not found",
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      message: "Escrow status updated successfully",
-      data: payment,
-    });
-  } catch (error) {
-    console.error("Error updating escrow status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update escrow status",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       message: "Escrow status updated successfully",
+//       data: payment,
+//     });
+//   } catch (error) {
+//     console.error("Error updating escrow status:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to update escrow status",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get payments by payer ID
-export async function getPayerPaymentsController(req, res) {
-  try {
-    const { payer_id } = req.params;
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
+// export async function getPayerPaymentsController(req, res) {
+//   try {
+//     const { payer_id } = req.params;
+//     const limit = parseInt(req.query.limit) || 50;
+//     const offset = parseInt(req.query.offset) || 0;
 
-    if (!payer_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Payer ID is required",
-      });
-    }
+//     if (!payer_id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Payer ID is required",
+//       });
+//     }
 
-    const payments = await getPaymentsByPayerId(payer_id, limit, offset);
+//     const payments = await getPaymentsByPayerId(payer_id, limit, offset);
 
-    res.status(200).json({
-      success: true,
-      data: payments,
-      pagination: {
-        limit,
-        offset,
-        count: payments.length,
-      },
-    });
-  } catch (error) {
-    console.error("Error getting payer payments:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get payer payments",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: payments,
+//       pagination: {
+//         limit,
+//         offset,
+//         count: payments.length,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error getting payer payments:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get payer payments",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get payments by seller ID
-export async function getSellerPaymentsController(req, res) {
-  try {
-    const { seller_id } = req.params;
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
+// export async function getSellerPaymentsController(req, res) {
+//   try {
+//     const { seller_id } = req.params;
+//     const limit = parseInt(req.query.limit) || 50;
+//     const offset = parseInt(req.query.offset) || 0;
 
-    if (!seller_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Seller ID is required",
-      });
-    }
+//     if (!seller_id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Seller ID is required",
+//       });
+//     }
 
-    const payments = await getPaymentsBySellerId(seller_id, limit, offset);
+//     const payments = await getPaymentsBySellerId(seller_id, limit, offset);
 
-    res.status(200).json({
-      success: true,
-      data: payments,
-      pagination: {
-        limit,
-        offset,
-        count: payments.length,
-      },
-    });
-  } catch (error) {
-    console.error("Error getting seller payments:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get seller payments",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: payments,
+//       pagination: {
+//         limit,
+//         offset,
+//         count: payments.length,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error getting seller payments:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get seller payments",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Refund payment
-export async function refundPaymentController(req, res) {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
+// export async function refundPaymentController(req, res) {
+//   try {
+//     const { id } = req.params;
+//     const { reason } = req.body;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment ID is required",
-      });
-    }
+//     if (!id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Payment ID is required",
+//       });
+//     }
 
-    const payment = await refundPayment(id, reason);
+//     const payment = await refundPayment(id, reason);
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
+//     if (!payment) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Payment not found",
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      message: "Payment refunded successfully",
-      data: payment,
-    });
-  } catch (error) {
-    console.error("Error refunding payment:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to refund payment",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       message: "Payment refunded successfully",
+//       data: payment,
+//     });
+//   } catch (error) {
+//     console.error("Error refunding payment:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to refund payment",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get seller payment statistics
-export async function getSellerPaymentStatsController(req, res) {
-  try {
-    const { seller_id } = req.params;
+// export async function getSellerPaymentStatsController(req, res) {
+//   try {
+//     const { seller_id } = req.params;
 
-    if (!seller_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Seller ID is required",
-      });
-    }
+//     if (!seller_id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Seller ID is required",
+//       });
+//     }
 
-    const stats = await getSellerPaymentStats(seller_id);
+//     const stats = await getSellerPaymentStats(seller_id);
 
-    res.status(200).json({
-      success: true,
-      data: stats,
-    });
-  } catch (error) {
-    console.error("Error getting seller payment stats:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get seller payment statistics",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: stats,
+//     });
+//   } catch (error) {
+//     console.error("Error getting seller payment stats:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get seller payment statistics",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get payer payment statistics
-export async function getPayerPaymentStatsController(req, res) {
-  try {
-    const { payer_id } = req.params;
+// export async function getPayerPaymentStatsController(req, res) {
+//   try {
+//     const { payer_id } = req.params;
 
-    if (!payer_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Payer ID is required",
-      });
-    }
+//     if (!payer_id) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Payer ID is required",
+//       });
+//     }
 
-    const stats = await getPayerPaymentStats(payer_id);
+//     const stats = await getPayerPaymentStats(payer_id);
 
-    res.status(200).json({
-      success: true,
-      data: stats,
-    });
-  } catch (error) {
-    console.error("Error getting payer payment stats:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get payer payment statistics",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: stats,
+//     });
+//   } catch (error) {
+//     console.error("Error getting payer payment stats:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get payer payment statistics",
+//       error: error.message,
+//     });
+//   }
+// }
 
 // Get held escrow payments (for auto-release)
-export async function getHeldEscrowPaymentsController(req, res) {
-  try {
-    const payments = await getHeldEscrowPayments();
+// export async function getHeldEscrowPaymentsController(req, res) {
+//   try {
+//     const payments = await getHeldEscrowPayments();
 
-    res.status(200).json({
-      success: true,
-      data: payments,
-      count: payments.length,
-    });
-  } catch (error) {
-    console.error("Error getting held escrow payments:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get held escrow payments",
-      error: error.message,
-    });
-  }
-}
+//     res.status(200).json({
+//       success: true,
+//       data: payments,
+//       count: payments.length,
+//     });
+//   } catch (error) {
+//     console.error("Error getting held escrow payments:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get held escrow payments",
+//       error: error.message,
+//     });
+//   }
+// }

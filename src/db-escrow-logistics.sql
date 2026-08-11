@@ -16,7 +16,8 @@ BEGIN
           'delivered',
           'completed',
           'cancelled',
-          'refunded'
+          'refunded',
+          'declined'
       );
    END IF;
 END$$;
@@ -543,46 +544,3 @@ BEGIN
     RETURN v_otp;
 END;
 $$ LANGUAGE plpgsql;
-
-
-CREATE TABLE IF NOT EXISTS payouts (
-
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-   --  payment_id UUID NOT NULL
-   --      REFERENCES payments(id) ON DELETE CASCADE,
-
-    order_id UUID NOT NULL
-        REFERENCES orders(id) ON DELETE CASCADE,
-
-    recipient_vendor_id UUID NOT NULL
-        REFERENCES vendors(id),
-   --  logistics_vendor_id UUID NOT NULL
-   --      REFERENCES vendors(id),
-
-    recipient_type VARCHAR(30) NOT NULL,
-
-    payout_type VARCHAR(30) NOT NULL,
-
-    gross_amount NUMERIC(12,2) NOT NULL, -- overall amount
-
-    commission_amount NUMERIC(12,2) DEFAULT 0, -- platform commission
-
-    net_amount NUMERIC(12,2) NOT NULL, -- actual amount to be paid out
-
-    currency VARCHAR(10) DEFAULT 'NGN',
-
-    status VARCHAR(30) DEFAULT 'pending',
-
-    transfer_reference VARCHAR(255),
-
-    transfer_response JSONB DEFAULT '{}',
-
-    failure_reason TEXT,
-
-    released_at TIMESTAMP,
-
-    created_at TIMESTAMP DEFAULT NOW(),
-
-    updated_at TIMESTAMP DEFAULT NOW()
-);

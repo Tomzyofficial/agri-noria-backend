@@ -26,15 +26,15 @@ export function generateShipmentStartTemplate({
   deliveryAddress,
 }) {
   const formatDate = (dateString) => {
-    if (!dateString) return 'TBD';
+    if (!dateString) return "TBD";
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -83,21 +83,6 @@ export function generateShipmentStartTemplate({
     .welcome {
       font-size: 18px;
       margin-bottom: 20px;
-    }
-    .tracking-box {
-      background-color: #f8f9fa;
-      border: 2px solid #4a7c23;
-      border-radius: 8px;
-      padding: 20px;
-      text-align: center;
-      margin: 25px 0;
-    }
-    .tracking-number {
-      font-size: 24px;
-      font-weight: bold;
-      color: #2d5016;
-      letter-spacing: 2px;
-      margin: 10px 0;
     }
     .info-grid {
       display: grid;
@@ -210,9 +195,6 @@ export function generateShipmentStartTemplate({
       .info-grid {
         grid-template-columns: 1fr;
       }
-      .tracking-number {
-        font-size: 20px;
-      }
       .otp-code {
         font-size: 28px;
       }
@@ -228,35 +210,27 @@ export function generateShipmentStartTemplate({
     
     <div class="content">
       <p class="welcome">
-        Dear ${buyerName || 'Valued Customer'},
+        Dear ${buyerName || "Valued Customer"},
       </p>
       <p>
         Great news! Your order <strong>#${orderNumber}</strong> has been picked up and is now in transit. 
         Your shipment is being handled by our trusted logistics partner.
       </p>
       
-      <div class="tracking-box">
-        <div class="info-label">TRACKING NUMBER</div>
-        <div class="tracking-number">${trackingNumber}</div>
-        <p style="margin: 10px 0 0; font-size: 14px; color: #666;">
-          Use this number to track your shipment or contact support
-        </p>
-      </div>
-      
       <h3 style="color: #2d5016; margin: 25px 0 15px;">📋 Shipment Details</h3>
       
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">Driver Name</div>
-          <div class="info-value">${driverName || 'Assigned Driver'}</div>
+          <div class="info-value">${driverName || "Assigned Driver"}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Driver Phone</div>
-          <div class="info-value">${driverPhone || 'Contact Logistics'}</div>
+          <div class="info-value">${driverPhone || "Contact Logistics"}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Vehicle Plate</div>
-          <div class="info-value">${vehiclePlate || 'N/A'}</div>
+          <div class="info-value">${vehiclePlate || "N/A"}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Estimated Delivery</div>
@@ -275,7 +249,7 @@ export function generateShipmentStartTemplate({
       
       <h3 style="color: #2d5016; margin: 25px 0 15px;">📍 Delivery Address</h3>
       <p style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; margin: 0;">
-        ${deliveryAddress || 'Address not specified'}
+        ${deliveryAddress || "Address not specified"}
       </p>
       
       <div class="timeline">

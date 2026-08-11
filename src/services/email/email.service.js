@@ -99,7 +99,7 @@ class EmailService {
           buyerName,
           orderNumber: orderData.id,
           totalAmount: orderData.total_amount,
-          currency: orderData.currency || "NGN",
+          currency: orderData.currency,
           items: orderData.items || [],
         }),
       };
@@ -130,8 +130,6 @@ class EmailService {
           vendorName,
           orderNumber: orderData.id,
           buyerName: orderData.buyer_name,
-          totalAmount: orderData.subtotal,
-          currency: orderData.currency,
         }),
       };
 
@@ -223,17 +221,34 @@ class EmailService {
       }
 
       // Send vendor (seller) new order notification
-      if (emailData.seller?.email && emailData.seller?.fname) {
+      const sellers = Array.isArray(emailData.seller)
+        ? emailData.seller
+        : emailData.seller
+          ? [emailData.seller]
+          : [];
+      const notifiedSellerEmails = new Set();
+      for (const seller of sellers) {
+        if (
+          !seller?.seller_email ||
+          !seller?.seller_fname ||
+          notifiedSellerEmails.has(seller.seller_email)
+        ) {
+          continue;
+        }
+
+        notifiedSellerEmails.add(seller.seller_email);
         const sellerName =
-          `${emailData.seller.fname} ${emailData.seller.lname || ""}`.trim();
-        results.seller = await this.sendVendorNewOrderEmail(
-          emailData.seller.email,
+          `${seller.seller_fname} ${seller.seller_lname || ""}`.trim();
+        const sellerResult = await this.sendVendorNewOrderEmail(
+          seller.seller_email,
           sellerName,
           {
             ...emailData.order,
             buyer_name: emailData.buyer?.name,
           },
         );
+        results.seller = results.seller || [];
+        results.seller.push(sellerResult);
       }
 
       // Send logistics partner assignment email
