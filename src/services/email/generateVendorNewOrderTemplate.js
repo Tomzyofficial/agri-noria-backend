@@ -2,8 +2,6 @@ export const generateVendorNewOrderTemplate = ({
   vendorName,
   orderNumber,
   buyerName,
-  totalAmount,
-  currency,
 }) => {
   return `
    <!DOCTYPE html>
@@ -35,11 +33,7 @@ export const generateVendorNewOrderTemplate = ({
             margin:20px 0;
          ">
             <p><strong>Order Number:</strong> ${orderNumber}</p>
-
             <p><strong>Buyer:</strong> ${buyerName}</p>
-
-            <p><strong>Total:</strong> ${currency} ${totalAmount}</p>
-
             <p><strong>Status:</strong> Awaiting Fulfillment</p>
          </div>
 

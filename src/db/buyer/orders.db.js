@@ -27,25 +27,10 @@ export function buildSellerPayout(orderId, orderItems) {
         commission_amount: 0,
         net_amount: sellerAmount,
         currency: item.currency,
-        //   order_items: [],
+        country_code: item.country_code,
       });
     }
-
-    //  const payout = payouts.get(sellerId);
-
-    //  payout.gross_amount += Number(item.seller_amount);
-
-    //  payout.commission_amount += Number(item.platform_fee ?? 0);
-
-    //  payout.net_amount = payout.gross_amount - payout.commission_amount;
-
-    //  payout.order_items.push({
-    //    listing_id: item.listing_id,
-    //    quantity: item.quantity,
-    //    seller_amount: item.seller_amount,
-    //  });
   }
-
   return [...payouts.values()];
 }
 
@@ -54,16 +39,6 @@ export function buildLogisticsPayout(orderId, orderItems) {
 
   for (const item of orderItems) {
     const logisticsId = item.logistics_id;
-
-    //  const subtotal = item.unit_price * item.quantity;
-
-    //  const qualifiesForDiscount = item.quantity >= item.min_quantity;
-
-    //  const discountAmount = qualifiesForDiscount
-    //    ? subtotal * (item.discount / 100)
-    //    : 0;
-
-    //  const sellerAmount = subtotal - discountAmount;
 
     if (!payouts.has(logisticsId)) {
       payouts.set(logisticsId, {
@@ -75,25 +50,10 @@ export function buildLogisticsPayout(orderId, orderItems) {
         commission_amount: 0,
         net_amount: item.rate_amount,
         currency: item.currency,
-        //   order_items: [],
+        country_code: item.country_code,
       });
     }
-
-    //  const payout = payouts.get(sellerId);
-
-    //  payout.gross_amount += Number(item.seller_amount);
-
-    //  payout.commission_amount += Number(item.platform_fee ?? 0);
-
-    //  payout.net_amount = payout.gross_amount - payout.commission_amount;
-
-    //  payout.order_items.push({
-    //    listing_id: item.listing_id,
-    //    quantity: item.quantity,
-    //    seller_amount: item.seller_amount,
-    //  });
   }
-
   return [...payouts.values()];
 }
 
@@ -123,13 +83,8 @@ export async function bulkInsert({
   });
 
   const query = `
-        INSERT INTO ${table}
-        (${columns.join(", ")})
-        VALUES
-        ${placeholders.join(",\n")}
-        RETURNING ${returning};
-    `;
-
+        INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders.join(",\n")}
+        RETURNING ${returning};`;
   const { rows } = await client.query(query, values);
 
   return rows;
@@ -156,17 +111,7 @@ export async function createOrder(orderData) {
     } = orderData;
 
     const orderQuery = `
-            INSERT INTO orders (
-                buyer_id,
-                total_amount,
-                currency,
-                country_code,
-                status,
-                fulfillment_type,
-                delivery_address,
-                notes,
-                metadata
-            )
+            INSERT INTO orders (buyer_id, total_amount, currency, country_code, status, fulfillment_type, delivery_address, notes, metadata)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
             RETURNING *;
         `;
@@ -186,14 +131,10 @@ export async function createOrder(orderData) {
     const order = rows[0];
 
     await createOrderItems(order.id, orderItems, client);
-    //   create payout
     const sellerPayout = buildSellerPayout(order.id, orderItems);
     const logisticsPayout = buildLogisticsPayout(order.id, orderItems);
-
     await createPayout([...sellerPayout, ...logisticsPayout], client);
-
     await client.query("COMMIT");
-
     return order;
   } catch (err) {
     await client.query("ROLLBACK");
@@ -204,48 +145,6 @@ export async function createOrder(orderData) {
 }
 
 export async function createOrderItems(orderId, orderItems, client) {
-  //   for (const item of orderItems) {
-  //     await client.query(
-  //       `
-  //             INSERT INTO order_items (
-  //                 order_id,
-  //                 listing_id,
-  //                 seller_id,
-  //                 logistics_id,
-  //                 listing_name,
-  //                 product_image,
-  //                 unit,
-  //                 quantity,
-  //                 unit_price,
-  //                 subtotal,
-  //                 discount,
-  //                 seller_amount,
-  //                 metadata
-  //             )
-  //             VALUES (
-  //                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
-  //             )
-  //              RETURNING *`,
-  //       [
-  //         orderId,
-  //         item.listing_id,
-  //         item.seller_id,
-  //         item.logistics_id,
-  //         item.listing_name,
-  //         item.product_image,
-  //         item.unit,
-  //         item.quantity,
-  //         item.unit_price ?? 0,
-  //         item.subtotal ?? 0,
-  //         item.discount ?? 0,
-  //         item.seller_amount ?? 0,
-  //         item.metadata ?? null,
-  //       ],
-  //     );
-  //   }
-
-  //   return true;
-
   const records = orderItems.map((item) => {
     const subtotal = item.unit_price * item.quantity;
 
@@ -295,38 +194,6 @@ export async function createOrderItems(orderId, orderItems, client) {
   });
 }
 export async function createPayout(payouts, client) {
-  //   for (const payout of payouts) {
-  //     await client.query(
-  //       `
-  //             INSERT INTO payouts (
-  //                 order_id,
-  //                recipient_vendor_id,
-  //                recipient_type,
-  //                payout_type,
-  //                gross_amount,
-  //                commision_amount,
-  //                net_amount,
-  //                currency,
-  //             )
-  //             VALUES (
-  //                 $1,$2,$3,$4,$5,$6,$7,$8
-  //             )
-  //              RETURNING *`,
-  //       [
-  //         orderId,
-  //         payout.seller_id,
-  //         "vendor",
-  //         "payout",
-  //         payout.subtotal ?? 0,
-  //         0,
-  //         0,
-  //         payout.currency,
-  //       ],
-  //     );
-  //   }
-
-  //   return true;
-
   return bulkInsert({
     client,
     table: "payouts",
@@ -339,22 +206,11 @@ export async function createPayout(payouts, client) {
       "commission_amount",
       "net_amount",
       "currency",
+      "country_code",
     ],
     records: payouts,
   });
 }
-
-// export async function getOrderById(orderId, buyerId) {
-//   const query = `
-//     SELECT o.id, o.status, o.delivery_address, o.metadata, ls.assigned_driver_name, ls.assigned_driver_phone
-//     FROM orders o
-//     LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
-//     WHERE o.id = $1 AND o.buyer_id = $2
-//   `;
-
-//   const result = await pool.query(query, [orderId, buyerId]);
-//   return result.rows[0];
-// }
 
 // Get orders by buyer ID
 export async function getOrdersByBuyerId(
@@ -397,12 +253,21 @@ export async function getOrdersBySellerId(
   params.push(limit, offset);
   const limitIdx = params.length - 1;
   const offsetIdx = params.length;
-  // o.id, o.currency, o.country_code, o.status, o.delivery_address, o.created_at, o.metadata,
   const query = `
-  SELECT o.*, ls.assigned_driver_name, ls.assigned_driver_phone FROM orders o LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
+  SELECT o.*, COUNT(*) as all_orders,
+      COUNT(CASE WHEN o.status = 'pending' THEN 1 END) as pending,
+      COUNT(CASE WHEN o.status = 'paid' THEN 1 END) as paid,
+      COUNT(CASE WHEN o.status = 'processing' THEN 1 END) as processing,
+      COUNT(CASE WHEN o.status = 'shipped' THEN 1 END) as shipped,
+      COUNT(CASE WHEN o.status = 'in_transit' THEN 1 END) as in_transit,
+      COUNT(CASE WHEN o.status = 'delivered' THEN 1 END) as delivered,
+      COUNT(CASE WHEN o.status = 'completed' THEN 1 END) as completed,
+      COUNT(CASE WHEN o.status = 'declined' THEN 1 END) as declined,
+      COUNT(CASE WHEN o.status = 'refunded' THEN 1 END) as refunded,
+      ls.assigned_driver_name, ls.assigned_driver_phone FROM orders o LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
    WHERE o.metadata->'seller_breakdown' @> jsonb_build_array(
     jsonb_build_object('seller_id', $1::text))
-   ${statusClause}
+   ${statusClause} GROUP BY o.id, ls.assigned_driver_name, ls.assigned_driver_phone
    ORDER BY o.created_at DESC
    LIMIT $${limitIdx} OFFSET $${offsetIdx}
   `;
@@ -413,60 +278,38 @@ export async function getOrdersBySellerId(
 // Update order status
 export async function updateOrderStatus(orderId, status) {
   const query = `
-    UPDATE orders
-    SET status = $1, updated_at = NOW()
-    WHERE id = $2
-    RETURNING *
-  `;
+    UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`;
 
   const result = await pool.query(query, [status, orderId]);
   return result.rows[0];
 }
 
-// Update order with delivery confirmation
-export async function updateOrderDelivery(orderId, deliveryData) {
-  const { actual_delivery_time, notes } = deliveryData;
+// Update order with delivery confirmation (not in use)
+// export async function updateOrderDelivery(orderId, deliveryData) {
+//   const { actual_delivery_time, notes } = deliveryData;
 
-  const query = `
-    UPDATE orders SET 
-      status = 'delivered',
-      actual_delivery_time = COALESCE($1, NOW()),
-      notes = COALESCE($2, notes),
-      updated_at = NOW()
-    WHERE id = $3
-    RETURNING *
-  `;
-
-  const result = await pool.query(query, [
-    actual_delivery_time,
-    notes,
-    orderId,
-  ]);
-  return result.rows[0];
-}
-
-// Delete order (soft delete by updating status) by logistics vendor
-// export async function cancelOrder(orderId, reason) {
 //   const query = `
-//     UPDATE orders SET status = 'cancelled', notes = COALESCE($1, notes), updated_at = NOW()
-//     WHERE id = $2 AND status NOT IN ('completed', 'delivered') RETURNING *`;
-//   const result = await pool.query(query, [reason, orderId]);
+//     UPDATE orders SET
+//       status = 'delivered',
+//       actual_delivery_time = COALESCE($1, NOW()),
+//       notes = COALESCE($2, notes),
+//       updated_at = NOW()
+//     WHERE id = $3
+//     RETURNING *
+//   `;
+
+//   const result = await pool.query(query, [
+//     actual_delivery_time,
+//     notes,
+//     orderId,
+//   ]);
 //   return result.rows[0];
 // }
 
-// Get order statistics for seller/farmer
+// Get order statistics for seller/farmer dashboard overview
 export async function getSellerOrderStats(sellerId) {
   const statsQuery = `
-    SELECT country_code, currency,
-      COUNT(*) as total_orders,
-      COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_orders,
-      COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_orders,
-      COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_orders,
-      COUNT(CASE WHEN status = 'shipped' THEN 1 END) as shipped_orders,
-      COUNT(CASE WHEN status = 'in_transit' THEN 1 END) as in_transit_orders,
-      COUNT(CASE WHEN status = 'delivered' THEN 1 END) as delivered_orders,
-      COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_orders,
-      COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_orders,
+    SELECT country_code, currency, COUNT(*) as total_orders,
       COALESCE(SUM(CASE WHEN status = 'delivered' THEN (metadata->'amount_breakdown'->>'subtotal')::numeric ELSE 0 END), 0) as total_revenue
     FROM orders
     WHERE metadata->'seller_breakdown' @> jsonb_build_array(

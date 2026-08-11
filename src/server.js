@@ -41,6 +41,10 @@ import publicFarmDevelopmentRoute from "./routes/farmDevelopment/public.route.js
 import jobsRoute from "./routes/jobs/jobs.route.js";
 import publicJobRoute from "./routes/jobs/publicJobs..route.js";
 import droneRoute from "./routes/drone/listings.route.js";
+import { startPendingBalanceReleaseJob } from "./lib/wallet/release-pending-balance.js";
+import { startWithdrawalReconciliationJob } from "./lib/wallet/reconcile-withdrawals.js";
+import walletRoute from "./routes/vendor/wallet.routes.js";
+import bankroute from "./routes/bankAccount.route.js";
 
 const port = process.env.PORT || 5000;
 
@@ -97,7 +101,9 @@ const app = express()
   .use("/api/vendor/jobs", jobsRoute)
   .use("/", publicJobRoute)
   .use("/api/vendor/drone", droneRoute)
-  .use("/api/drone-marketplace", droneRoute);
+  .use("/api/drone-marketplace", droneRoute)
+  .use("/api/vendor", walletRoute)
+  .use("/api/vendor", bankroute);
 
 const server = http.createServer(app);
 
@@ -135,6 +141,8 @@ app.set("io", io);
 
 server.listen(port, () => {
   console.log(`Server listening on ${port}`);
+  startPendingBalanceReleaseJob();
+  startWithdrawalReconciliationJob();
 });
 
 export default app;

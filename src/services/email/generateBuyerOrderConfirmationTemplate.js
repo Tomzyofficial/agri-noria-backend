@@ -91,9 +91,9 @@ export const generateBuyerOrderConfirmationTemplate = ({
                  .map(
                    (item) => `
                   <tr>
-                     <td>${item.product_name}</td>
+                     <td>${item.listing_name}</td>
                      <td>${item.quantity}</td>
-                     <td>${currency} ${item.unit_price}</td>
+                     <td>${currency} ${item.price}</td>
                   </tr>
                `,
                  )

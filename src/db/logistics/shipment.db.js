@@ -6,11 +6,6 @@ import {
   generateOTPExpiry,
 } from "../../utils/logistics.utils.js";
 
-/**
- * Check if a shipment already exists for an order
- * @param {string} orderId - Order ID
- * @returns {Promise<boolean>} True if shipment exists
- */
 export async function shipmentExistsForOrder(orderId) {
   try {
     const query = `
@@ -100,11 +95,7 @@ export async function createShipment(shipmentData) {
  */
 export async function updateOrderStatusToInTransit(orderId) {
   const query = `
-    UPDATE orders
-    SET 
-      status = 'in_transit',
-      updated_at = NOW()
-    WHERE id = $1
+    UPDATE orders SET status = 'in_transit', updated_at = NOW() WHERE id = $1
     RETURNING *
   `;
   const result = await pool.query(query, [orderId]);
@@ -160,8 +151,6 @@ export async function updateOrderStatusToInTransit(orderId) {
  * 4. Create shipment record
  * 5. Update order status
  * 6. Create tracking event
- * @param {Object} data - Shipment start data
- * @returns {Promise<Object>} Result with success status and data
  */
 export async function startShipmentTransaction(data) {
   const client = await pool.connect();
@@ -312,30 +301,30 @@ export async function startShipmentTransaction(data) {
  * @param {string} trackingNumber - Tracking number
  * @returns {Promise<Object|null>} Shipment data
  */
-export async function getShipmentByTrackingNumber(trackingNumber) {
-  try {
-    const query = `
-      SELECT 
-        ls.*,
-        o.id as order_id,
-        o.buyer_id,
-        o.delivery_address,
-        o.total_amount,
-        o.currency,
-        b.name as buyer_name,
-        b.email as buyer_email
-      FROM logistics_shipments ls
-      INNER JOIN orders o ON ls.order_id = o.id
-      INNER JOIN buyers b ON o.buyer_id = b.buyer_id
-      WHERE ls.tracking_number = $1
-    `;
-    const result = await pool.query(query, [trackingNumber]);
-    return result.rows[0] || null;
-  } catch (error) {
-    console.error("Error fetching shipment by tracking number:", error);
-    throw error;
-  }
-}
+// export async function getShipmentByTrackingNumber(trackingNumber) {
+//   try {
+//     const query = `
+//       SELECT
+//         ls.*,
+//         o.id as order_id,
+//         o.buyer_id,
+//         o.delivery_address,
+//         o.total_amount,
+//         o.currency,
+//         b.name as buyer_name,
+//         b.email as buyer_email
+//       FROM logistics_shipments ls
+//       INNER JOIN orders o ON ls.order_id = o.id
+//       INNER JOIN buyers b ON o.buyer_id = b.buyer_id
+//       WHERE ls.tracking_number = $1
+//     `;
+//     const result = await pool.query(query, [trackingNumber]);
+//     return result.rows[0] || null;
+//   } catch (error) {
+//     console.error("Error fetching shipment by tracking number:", error);
+//     throw error;
+//   }
+// }
 
 /**
  * Get shipment by order ID
@@ -418,14 +407,8 @@ export async function verifyDeliveryOTP(shipmentId, otp) {
   }
 }
 
-/**
- * Complete delivery (logistics partner action)
- * Verifies OTP and marks order as completed
- * @param {string} orderId - Order ID
- * @param {string} otp - Plain OTP to verify
- * @param {string} logisticsPartnerId - Logistics partner ID for ownership verification
- * @returns {Promise<Object>} Result
- */
+// Complete delivery (logistics partner action)
+//  Verifies with OTP and marks order as delivered
 export async function completeDeliveryWithOTP(
   orderId,
   otp,
@@ -486,20 +469,14 @@ export async function completeDeliveryWithOTP(
 
     // Mark OTP as verified and update shipment
     await client.query(
-      `UPDATE logistics_shipments 
-       SET delivery_otp_verified = true, 
-           delivery_otp_verified_at = NOW(),
-           delivered_at = NOW(),
-           status = 'delivered'
+      `UPDATE logistics_shipments SET delivery_otp_verified = true, delivery_otp_verified_at = NOW(), delivered_at = NOW(), status = 'delivered'
        WHERE id = $1`,
       [order.shipment_id],
     );
 
     // Update order status to delivered
     await client.query(
-      `UPDATE orders 
-       SET status = 'delivered', 
-           updated_at = NOW()
+      `UPDATE orders SET status = 'delivered',  updated_at = NOW()
        WHERE id = $1`,
       [orderId],
     );
@@ -540,104 +517,96 @@ export async function completeDeliveryWithOTP(
   }
 }
 
-/**
- * Confirm buyer satisfaction (buyer action)
- * Verifies OTP and marks buyer as satisfied
- * @param {string} orderId - Order ID
- * @param {string} otp - Plain OTP to verify
- * @param {string} buyerId - Buyer ID for ownership verification
- * @returns {Promise<Object>} Result
- */
-export async function confirmBuyerSatisfactionWithOTP(orderId, otp, buyerId) {
-  const client = await pool.connect();
+// export async function confirmBuyerSatisfactionWithOTP(orderId, otp, buyerId) {
+//   const client = await pool.connect();
 
-  try {
-    await client.query("BEGIN");
+//   try {
+//     await client.query("BEGIN");
 
-    const orderQuery = `
-      SELECT o.id, o.status, o.buyer_id, ls.id as shipment_id, ls.delivery_otp, 
-       ls.delivery_otp_expires_at, ls.buyer_satisfied
-      FROM orders o
-      INNER JOIN logistics_shipments ls ON o.id = ls.order_id
-      WHERE o.id = $1 AND o.buyer_id = $2
-    `;
-    const orderResult = await client.query(orderQuery, [orderId, buyerId]);
-    if (orderResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return {
-        success: false,
-        error: "Order not found or does not belong to this buyer",
-      };
-    }
+//     const orderQuery = `
+//       SELECT o.id, o.status, o.buyer_id, ls.id as shipment_id, ls.delivery_otp,
+//        ls.delivery_otp_expires_at, ls.buyer_satisfied
+//       FROM orders o
+//       INNER JOIN logistics_shipments ls ON o.id = ls.order_id
+//       WHERE o.id = $1 AND o.buyer_id = $2
+//     `;
+//     const orderResult = await client.query(orderQuery, [orderId, buyerId]);
+//     if (orderResult.rows.length === 0) {
+//       await client.query("ROLLBACK");
+//       return {
+//         success: false,
+//         error: "Order not found or does not belong to this buyer",
+//       };
+//     }
 
-    const order = orderResult.rows[0];
+//     const order = orderResult.rows[0];
 
-    if (order.status !== "in_transit" && order.status !== "delivered") {
-      await client.query("ROLLBACK");
-      return {
-        success: false,
-        error: `Order is not eligible for satisfaction confirmation. Current status: ${order.status}`,
-      };
-    }
+//     if (order.status !== "in_transit" && order.status !== "delivered") {
+//       await client.query("ROLLBACK");
+//       return {
+//         success: false,
+//         error: `Order is not eligible for satisfaction confirmation. Current status: ${order.status}`,
+//       };
+//     }
 
-    if (order.buyer_satisfied) {
-      await client.query("ROLLBACK");
-      return { success: false, error: "Buyer satisfaction already confirmed" };
-    }
+//     if (order.buyer_satisfied) {
+//       await client.query("ROLLBACK");
+//       return { success: false, error: "Buyer satisfaction already confirmed" };
+//     }
 
-    if (new Date() > new Date(order.delivery_otp_expires_at)) {
-      await client.query("ROLLBACK");
-      return { success: false, error: "OTP has expired" };
-    }
+//     if (new Date() > new Date(order.delivery_otp_expires_at)) {
+//       await client.query("ROLLBACK");
+//       return { success: false, error: "OTP has expired" };
+//     }
 
-    // Verify OTP
-    const hashedOTP = hashOTP(otp);
-    if (hashedOTP !== order.delivery_otp) {
-      await client.query("ROLLBACK");
-      return { success: false, error: "Invalid OTP" };
-    }
+//     // Verify OTP
+//     const hashedOTP = hashOTP(otp);
+//     if (hashedOTP !== order.delivery_otp) {
+//       await client.query("ROLLBACK");
+//       return { success: false, error: "Invalid OTP" };
+//     }
 
-    // Mark buyer as satisfied
-    await client.query(
-      `UPDATE logistics_shipments 
-       SET buyer_satisfied = true, 
-           buyer_satisfied_at = NOW()
-       WHERE id = $1`,
-      [order.shipment_id],
-    );
+//     // Mark buyer as satisfied
+//     await client.query(
+//       `UPDATE logistics_shipments
+//        SET buyer_satisfied = true,
+//            buyer_satisfied_at = NOW()
+//        WHERE id = $1`,
+//       [order.shipment_id],
+//     );
 
-    // Create tracking event
-    await client.query(
-      `INSERT INTO shipment_tracking_events (
-        shipment_id, event_type, event_status, event_notes
-      ) VALUES ($1, $2, $3, $4)`,
-      [
-        order.shipment_id,
-        "buyer_satisfied",
-        "satisfied",
-        "Buyer confirmed satisfaction",
-      ],
-    );
+//     // Create tracking event
+//     await client.query(
+//       `INSERT INTO shipment_tracking_events (
+//         shipment_id, event_type, event_status, event_notes
+//       ) VALUES ($1, $2, $3, $4)`,
+//       [
+//         order.shipment_id,
+//         "buyer_satisfied",
+//         "satisfied",
+//         "Buyer confirmed satisfaction",
+//       ],
+//     );
 
-    await client.query("COMMIT");
+//     await client.query("COMMIT");
 
-    return {
-      success: true,
-      message: "Buyer satisfaction confirmed successfully",
-      data: {
-        order_id: orderId,
-        shipment_id: order.shipment_id,
-        buyer_satisfied: true,
-      },
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error confirming buyer satisfaction:", error);
-    return {
-      success: false,
-      error: error.message || "Failed to confirm buyer satisfaction",
-    };
-  } finally {
-    client.release();
-  }
-}
+//     return {
+//       success: true,
+//       message: "Buyer satisfaction confirmed successfully",
+//       data: {
+//         order_id: orderId,
+//         shipment_id: order.shipment_id,
+//         buyer_satisfied: true,
+//       },
+//     };
+//   } catch (error) {
+//     await client.query("ROLLBACK");
+//     console.error("Error confirming buyer satisfaction:", error);
+//     return {
+//       success: false,
+//       error: error.message || "Failed to confirm buyer satisfaction",
+//     };
+//   } finally {
+//     client.release();
+//   }
+// }

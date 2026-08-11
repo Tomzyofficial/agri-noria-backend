@@ -135,7 +135,7 @@ export async function getLogisticsProvidersNearBuyer(address) {
   try {
     const searchTerm = address?.trim();
     const queryText = `SELECT veh.id, veh.vendor_id, veh.title, veh.vehicle_type, veh.cargo_type, veh.max_weight_kg, veh.base_location, veh.operating_regions,
-    veh.volume_cubic_meters, veh.pricing_model, veh.rate_amount, veh.image, veh.status, v.email AS logistics_provider_email, v.id AS logistics_provider_id FROM vehicles veh LEFT JOIN vendors v
+    veh.volume_cubic_meters, veh.pricing_model, veh.rate_amount, veh.image, veh.status, v.fname AS logistics_provider_fname, v.lname AS logistics_provider_lname, v.email AS logistics_provider_email, v.id AS logistics_provider_id FROM vehicles veh LEFT JOIN vendors v
     ON veh.vendor_id = v.id WHERE EXISTS (
     SELECT 1 FROM unnest(string_to_array(lower($1), ' ')) AS keyword WHERE lower(veh.base_location) LIKE '%' || keyword || '%' OR EXISTS (SELECT 1 FROM unnest(veh.operating_regions) AS region WHERE lower(region) LIKE '%' || keyword || '%')) ORDER BY veh.id;`;
     const result = await pool.query(queryText, [searchTerm]);
@@ -223,30 +223,30 @@ export async function getLogisticsOrderStats(vendorId) {
   return result.rows[0];
 }
 
-/** Ensure order belongs to this logistics vendor's vehicle. This function is used during when logistics vendor wants to start shipment */
+/** Ensure order belongs to this logistics vendor's vehicle. This function is used when logistics vendor wants to start shipment */
 export async function getLogisticsOrderForVendor(orderId, vendorId) {
-  //   const query = `
-  //     SELECT
-  //       o.*,
-  //       b.name AS buyer_name,
-  //       b.email AS buyer_email,
-  //       v.fname AS seller_fname,
-  //       v.lname AS seller_lname,
-  //       v.email AS seller_email,
-  //       v.phone AS seller_phone,
-  //       vd.business_name AS seller_business_name,
-  //       veh.id AS vehicle_id,
-  //       veh.title AS vehicle_title,
-  //       veh.vendor_id AS logistics_vendor_id
-  //     FROM orders o
-  //     INNER JOIN vehicles veh
-  //       ON (o.metadata->'logistics_provider'->>'vehicle_id')::uuid = veh.id
-  //     LEFT JOIN buyers b ON o.buyer_id = b.buyer_id
-  //     LEFT JOIN vendors v ON o.seller_id = v.id
-  //     LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
-  //     WHERE o.id = $1 AND veh.vendor_id = $2
-  //   `;
-  const query = `SELECT * FROM orders WHERE id = $1 AND metadata->'logistics_provider'->>'logistics_vendor_id' = $2`;
+  const query = `
+      SELECT
+        o.*,
+        b.name AS buyer_name,
+        b.email AS buyer_email,
+        v.fname AS seller_fname,
+        v.lname AS seller_lname,
+        v.email AS seller_email,
+        v.phone AS seller_phone,
+        vd.business_name AS seller_business_name,
+        veh.id AS vehicle_id,
+        veh.title AS vehicle_title,
+        veh.vendor_id AS logistics_vendor_id
+      FROM orders o
+      LEFT JOIN vehicles veh
+        ON (o.metadata->'logistics_provider'->>'vehicle_id')::uuid = veh.id
+      LEFT JOIN buyers b ON o.buyer_id = b.buyer_id
+      LEFT JOIN vendors v ON (o.metadata->'logistics_provider'->>'logistics_vendor_id')::uuid = v.id
+      LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
+      WHERE o.id = $1 AND veh.vendor_id = $2
+    `;
+  //   const query = `SELECT * FROM orders WHERE id = $1 AND metadata->'logistics_provider'->>'logistics_vendor_id' = $2`;
   const result = await pool.query(query, [orderId, vendorId]);
   return result.rows[0] || null;
 }
@@ -499,7 +499,11 @@ export async function startLogisticsShipment(orderId, vendorId) {
  */
 export async function getOrderDataForEmails(orderId) {
   try {
-    const query = `SELECT id, total_amount, currency, delivery_address, metadata FROM orders WHERE id = $1`;
+    const query = `
+      SELECT id, total_amount, currency, delivery_address, metadata
+      FROM orders
+      WHERE id = $1
+    `;
     const result = await pool.query(query, [orderId]);
     if (!result.rows[0]) {
       console.log("no row found for email", result.rows);
@@ -507,49 +511,74 @@ export async function getOrderDataForEmails(orderId) {
     }
 
     const order = result.rows[0];
-    const metadata = order.metadata || {};
-    const amountBreakdown = metadata.amount_breakdown || {};
-    const itemBreakdown = Array.isArray(metadata.item_breakdown)
-      ? metadata.item_breakdown
+    const metadata =
+      order.metadata && typeof order.metadata === "object"
+        ? order.metadata
+        : {};
+    const amountBreakdown =
+      metadata.amount_breakdown && typeof metadata.amount_breakdown === "object"
+        ? metadata.amount_breakdown
+        : {};
+    const buyerInfo =
+      metadata.buyer_info && typeof metadata.buyer_info === "object"
+        ? metadata.buyer_info
+        : {};
+    const sellerInfo = Array.isArray(metadata.seller_breakdown)
+      ? metadata.seller_breakdown.filter(
+          (seller) => seller && typeof seller === "object",
+        )
       : [];
-
-    const buyerInfo = metadata.buyer_info || {};
-    const vendorInfo = metadata.vendor_info || {};
-    const logisticsInfo = metadata.logistics_provider || {};
+    const logisticsInfo =
+      metadata.logistics_provider &&
+      typeof metadata.logistics_provider === "object"
+        ? metadata.logistics_provider
+        : {};
 
     const buyerName = [buyerInfo.fname, buyerInfo.lname]
       .filter(Boolean)
       .join(" ");
+    const currency =
+      order.currency || sellerInfo.find((seller) => seller.currency)?.currency;
+    const pickupAddress = [
+      ...new Set(
+        sellerInfo.map((seller) => seller.listing_location).filter(Boolean),
+      ),
+    ].join(", ");
     return {
       success: true,
       data: {
         buyer: {
-          name: buyerName || buyerInfo.email || "Buyer",
+          name: buyerName || buyerInfo.email || "Valued Customer",
           email: buyerInfo.email,
+          phone: buyerInfo.phone,
+          fname: buyerInfo.fname,
+          lname: buyerInfo.lname,
         },
-        seller: {
-          fname: vendorInfo.seller_fname || "Seller",
-          lname: vendorInfo.seller_lname || "",
-          email: vendorInfo.seller_email,
-        },
+        seller: sellerInfo,
         logistics: {
-          fname: logisticsInfo.logistics_fname || "Logistics",
-          lname: logisticsInfo.logistics_lname || "",
           email: logisticsInfo.logistics_provider_email,
+          fname: logisticsInfo.logistics_provider_fname,
+          lname: logisticsInfo.logistics_provider_lname,
+          vendor_id: logisticsInfo.logistics_vendor_id,
           vehicle_title: logisticsInfo.vehicle_title,
+          vehicle_id: logisticsInfo.vehicle_id,
+          vehicle_type: logisticsInfo.vehicle_type,
+          rate_amount: logisticsInfo.rate_amount,
+          base_location: logisticsInfo.base_location,
+          operating_regions: logisticsInfo.operating_regions,
+          pricing_model: logisticsInfo.pricing_model,
         },
         order: {
           id: order.id,
           order_number: order.id,
-          total_amount: amountBreakdown.total_amount,
+          total_amount: amountBreakdown.total_amount ?? order.total_amount,
           subtotal: amountBreakdown.subtotal,
-          currency: order.currency || buyerInfo.currency || "NGN",
+          discount: amountBreakdown.discount,
+          delivery_fee: amountBreakdown.delivery_fee,
+          currency,
           delivery_address: order.delivery_address,
-          pickup_address:
-            itemBreakdown?.[0]?.listing_location ||
-            logisticsInfo.pickup_address ||
-            "",
-          items: itemBreakdown,
+          pickup_address: pickupAddress || null,
+          items: sellerInfo,
         },
       },
     };
