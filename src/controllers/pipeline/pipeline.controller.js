@@ -364,12 +364,46 @@ pipelineController.getMyCluster = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
+      console.log("[getMyCluster] vendor_id:", payload.id);
+
       const profile = await getFarmerProfileByVendor(payload.id);
-      if (!profile || !profile.cluster_id) {
+      console.log("[getMyCluster] profile:", profile ? { id: profile.id, cluster_id: profile.cluster_id } : null);
+
+      const pool = (await import("../../lib/connect.js")).default;
+      let clusterId = profile?.cluster_id;
+
+      if (!clusterId && profile?.id) {
+         const { rows } = await pool.query(
+            "SELECT cluster_id FROM cluster_members WHERE farmer_id = $1 ORDER BY assigned_at DESC LIMIT 1",
+            [profile.id]
+         );
+         console.log("[getMyCluster] cluster_members lookup by profile.id:", rows);
+         if (rows.length > 0) clusterId = rows[0].cluster_id;
+      }
+
+      if (!clusterId) {
+         // Also try looking up by vendor_id directly (some assign flows use vendor_id as farmer_id)
+         const { rows } = await pool.query(
+            "SELECT cluster_id FROM cluster_members WHERE farmer_id = $1 ORDER BY assigned_at DESC LIMIT 1",
+            [payload.id]
+         );
+         console.log("[getMyCluster] cluster_members lookup by vendor_id:", rows);
+         if (rows.length > 0) clusterId = rows[0].cluster_id;
+      }
+
+      console.log("[getMyCluster] resolved clusterId:", clusterId);
+
+      if (!clusterId) {
          return res.status(200).json({ success: true, data: null });
       }
 
-      const cluster = await getFarmerCluster(profile.cluster_id);
+      const cluster = await getFarmerCluster(clusterId);
+      if (cluster) {
+         cluster.supervisor_name = (cluster.supervisor_fname || cluster.supervisor_lname) 
+            ? `${cluster.supervisor_fname || ''} ${cluster.supervisor_lname || ''}`.trim() 
+            : null;
+      }
+      console.log("[getMyCluster] returning cluster:", cluster?.name || null);
       return res.status(200).json({ success: true, data: cluster });
    } catch (error) {
       console.error("Error fetching my cluster:", error);
@@ -407,9 +441,21 @@ pipelineController.assignFarmer = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      const { cluster_id, farmer_id } = req.body;
-      const assignment = await assignFarmerToCluster(cluster_id, farmer_id);
-      return res.status(201).json({ success: true, data: assignment });
+      let { cluster_id, farmer_id } = req.body;
+      // If farmer_id not provided, resolve from logged-in vendor's farmer profile
+      if (!farmer_id) {
+         const profile = await getFarmerProfileByVendor(payload.id);
+         farmer_id = profile?.id;
+      }
+
+      if (!farmer_id) {
+         return res.status(400).json({ success: false, error: "No farmer profile found for this account" });
+      }
+
+      await assignFarmerToCluster(cluster_id, farmer_id);
+
+      const cluster = await getFarmerCluster(cluster_id);
+      return res.status(200).json({ success: true, data: cluster });
    } catch (error) {
       console.error("Error assigning farmer:", error);
       return res.status(500).json({ success: false, error: "Failed to assign farmer" });
