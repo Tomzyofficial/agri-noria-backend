@@ -36,12 +36,12 @@ pipelineRoute.post("/pipeline/wallet/transfer/ecosystem", pipelineController.tra
 pipelineRoute.post("/pipeline/wallet/fund/initialize", pipelineController.initializeWalletFunding);
 pipelineRoute.get("/pipeline/wallet/fund/verify", pipelineController.verifyWalletFunding);
 
-// Clusters
-pipelineRoute.post("/pipeline/clusters", pipelineController.createCluster);
-pipelineRoute.get("/pipeline/clusters", pipelineController.getClusters);
+// Clusters - specific routes MUST be before general /clusters to avoid Express matching issues
 pipelineRoute.get("/pipeline/clusters/mine", pipelineController.getMyCluster);
 pipelineRoute.get("/pipeline/clusters/nearby", pipelineController.getNearbyClusters);
 pipelineRoute.get("/pipeline/clusters/eligible-farmers", pipelineController.getEligibleFarmers);
+pipelineRoute.post("/pipeline/clusters", pipelineController.createCluster);
+pipelineRoute.get("/pipeline/clusters", pipelineController.getClusters);
 pipelineRoute.post("/pipeline/clusters/assign", pipelineController.assignFarmer);
 pipelineRoute.patch("/pipeline/clusters/enroll", pipelineController.enrollInProgram);
 pipelineRoute.get("/pipeline/clusters/:id/members", pipelineController.getClusterMembers);

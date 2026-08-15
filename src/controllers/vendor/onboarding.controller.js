@@ -50,6 +50,8 @@ export const submitLevel1 = async (req, res) => {
 
         // We can create a default farm for level 1 production if crop is provided
         if (crop) {
+            await pool.query("UPDATE farmer_profiles SET commodity = $1 WHERE vendor_id = $2", [crop, vendor_id]);
+
             const farmCheck = await pool.query("SELECT id FROM farms WHERE vendor_id = $1", [vendor_id]);
             let farmId;
             if (farmCheck.rows.length === 0) {
@@ -121,7 +123,7 @@ export const submitLevel2 = async (req, res) => {
 
         // Update vendor onboarding level to 2 and set verified status after farm mapping
         await pool.query("UPDATE vendors SET onboarding_level = GREATEST(onboarding_level, 2), onboarding_status = 'verified', is_verified = true WHERE id = $1", [vendor_id]);
-        await pool.query("UPDATE farmer_profiles SET onboarding_status = 'verified' WHERE vendor_id = $1", [vendor_id]);
+        await pool.query("UPDATE farmer_profiles SET onboarding_status = 'verified', farm_size_hectares = COALESCE($1, farm_size_hectares) WHERE vendor_id = $2", [parseNull(farm_size_hectares), vendor_id]);
 
         await pool.query('COMMIT');
         res.status(200).json({ success: true, message: "Level 2 Onboarding completed." });
@@ -149,6 +151,9 @@ export const submitLevel3 = async (req, res) => {
         // Historical Productions
         if (historical_productions && historical_productions.length > 0) {
             for (const prod of historical_productions) {
+                if (prod.crop) {
+                    await pool.query("UPDATE farmer_profiles SET commodity = $1 WHERE vendor_id = $2", [prod.crop, vendor_id]);
+                }
                 await pool.query(`
                     INSERT INTO historical_productions (vendor_id, season_name, crop, yield_amount, area_hectares)
                     VALUES ($1, $2, $3, $4, $5)

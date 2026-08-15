@@ -244,9 +244,25 @@ async function createFarmerProfile(data) {
 
 async function getFarmerProfileByVendor(vendorId) {
    const { rows } = await pool.query(
-      `SELECT fp.*, v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, cm.cluster_id
+      `SELECT fp.*, 
+              COALESCE(
+                 NULLIF(TRIM(fp.commodity), ''),
+                 (SELECT crop FROM historical_productions WHERE vendor_id = fp.vendor_id AND crop IS NOT NULL AND crop != '' ORDER BY id DESC LIMIT 1),
+                 (SELECT fp2.crop FROM farm_productions fp2 JOIN farms f2 ON fp2.farm_id = f2.id WHERE f2.vendor_id = fp.vendor_id AND fp2.crop IS NOT NULL AND fp2.crop != '' ORDER BY fp2.id DESC LIMIT 1)
+              ) as commodity,
+              COALESCE(NULLIF(fp.farm_size_hectares, 0), f.farm_size_hectares, 0) as farm_size_hectares,
+              f.farm_name,
+              f.ownership_type,
+              f.boundary_polygon,
+              f.boundary_file_url,
+              f.land_title_url,
+              f.farm_entrance_photo_url,
+              f.farm_interior_photo_url,
+              f.crop_photo_url,
+              v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, p.commodity as program_commodity, p.target_hectares as program_target_hectares, cm.cluster_id
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
+       LEFT JOIN farms f ON f.vendor_id = v.id
        LEFT JOIN programs p ON fp.program_id = p.id
        LEFT JOIN cluster_members cm ON cm.farmer_id = fp.id
        WHERE fp.vendor_id = $1
@@ -347,16 +363,6 @@ async function assignFarmerToCluster(clusterId, farmerId) {
       [clusterId, farmerId]
    );
 
-   // Sync cluster_id to farmer_profiles (optional/legacy column)
-   try {
-      await pool.query(
-         `UPDATE farmer_profiles SET cluster_id = $1 WHERE id = $2`,
-         [clusterId, farmerId]
-      );
-   } catch (e) {
-      console.log("Optional farmer_profiles.cluster_id column sync skipped:", e.message);
-   }
-
    return rows[0];
 }
 
@@ -420,16 +426,6 @@ async function removeFarmerFromCluster(clusterId, farmerId, supervisorId) {
 
    if (rowCount === 0) throw new Error("Farmer not found in cluster");
 
-   // Clear cluster_id from farmer_profiles (optional/legacy column)
-   try {
-      await pool.query(
-         `UPDATE farmer_profiles SET cluster_id = NULL WHERE id = $1`,
-         [farmerId]
-      );
-   } catch (e) {
-      console.log("Optional farmer_profiles.cluster_id column sync skipped:", e.message);
-   }
-
    return true;
 }
 
@@ -439,7 +435,7 @@ async function getFarmerCluster(clusterId) {
        (SELECT COUNT(*) FROM cluster_members WHERE cluster_id = c.id) as farmer_count,
        (SELECT COALESCE(SUM(fp.farm_size_hectares), 0) FROM farmer_profiles fp JOIN cluster_members cm ON fp.id = cm.farmer_id WHERE cm.cluster_id = c.id) as total_hectares
        FROM clusters c
-       JOIN vendors v ON c.supervisor_id = v.id
+       LEFT JOIN vendors v ON c.supervisor_id = v.id
        WHERE c.id = $1`,
       [clusterId]
    );
