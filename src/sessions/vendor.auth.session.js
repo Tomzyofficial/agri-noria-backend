@@ -33,7 +33,10 @@ export async function createVendorSession(res, { user, rememberMe = false }) {
     .sign(encodedKey);
 
   // Dynamically assign cookie name based on workspace
-  const activeCookieName = user.workspace === 'marketplace' ? 'marketplace-session' : 'ecosystem-session';
+  const activeCookieName =
+    user.workspace === "marketplace"
+      ? "marketplace-session"
+      : "ecosystem-session";
 
   // Configure cookie for cross-origin support in production
   const cookieConfig = {
@@ -53,11 +56,12 @@ export async function createVendorSession(res, { user, rememberMe = false }) {
 export async function verifyVendorToken(req) {
   try {
     // Check proxy injected header for active context
-    const workspace = req.headers['x-active-workspace'] || 'ecosystem';
-    const activeCookieName = workspace === 'marketplace' ? 'marketplace-session' : 'ecosystem-session';
+    const workspace = req.headers["x-active-workspace"] || "ecosystem";
+    const activeCookieName =
+      workspace === "marketplace" ? "marketplace-session" : "ecosystem-session";
 
     let token = req.cookies?.[activeCookieName];
-    
+
     // Fallback for old cookie structure
     if (!token) token = req.cookies?.[COOKIE_NAME];
 
@@ -70,12 +74,11 @@ export async function verifyVendorToken(req) {
     const { payload } = await jwtVerify(token, encodedKey, {
       algorithms: ["HS256"],
     });
-    
+
     // Restore backward compatibility for old tokens
     if (!payload.id && payload.vendor_id) {
-       payload.id = payload.vendor_id;
+      payload.id = payload.vendor_id;
     }
-    
     return payload;
   } catch {
     return null;
@@ -96,8 +99,8 @@ export function deleteVendorSession(res) {
 
   // Get active workspace context to clear correct cookie
   // Note: we'll default to clearing both if workspace is unknown, but preferably we clear the targeted one
-  res.clearCookie('marketplace-session', cookieConfig);
-  res.clearCookie('ecosystem-session', cookieConfig);
+  res.clearCookie("marketplace-session", cookieConfig);
+  res.clearCookie("ecosystem-session", cookieConfig);
   res.clearCookie(COOKIE_NAME, cookieConfig); // clear legacy cookie just in case
   return true;
 }

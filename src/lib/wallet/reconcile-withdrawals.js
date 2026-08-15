@@ -1,12 +1,9 @@
-// lib/wallet/reconcile-withdrawals.ts
-
 import pool from "../connect.js";
 import {
   createTransferRecipient,
   initiateTransfer,
   verifyTransfer,
 } from "../services/paystack-transfer.service.js";
-import cron from "node-cron";
 
 // How long to wait before treating a request as "stuck" rather than
 // just "in flight normally." Keeps the job from racing a withdrawal
@@ -271,7 +268,7 @@ async function reverseFailedWithdrawal(payoutRequestId, reason) {
 // ---------------------------------------------------------
 // Entry point — run this on a schedule (e.g. every 5-10 minutes)
 // ---------------------------------------------------------
-
+// Cron job used inside the jobs dir
 export async function reconcileWithdrawals() {
   const { retried, failed } = await retryStuckPending();
   const { resolved, stillPending } = await reconcileStuckProcessing();
@@ -282,25 +279,4 @@ export async function reconcileWithdrawals() {
     processingResolved: resolved,
     processingStillPending: stillPending,
   };
-}
-
-export function startWithdrawalReconciliationJob() {
-  let isRunning = false;
-
-  cron.schedule("*/30 * * * *", async () => {
-    if (isRunning) return;
-    isRunning = true;
-    try {
-      const result = await reconcileWithdrawals();
-      console.log("[reconciled withdrawals] Done:", result);
-    } catch (err) {
-      console.error("[reconciled withdrawals] Job crashed:", err);
-    } finally {
-      isRunning = false;
-    }
-  });
-
-  console.log(
-    "[reconciled withdrawals] Cron job registered (every 30 minutes).",
-  );
 }

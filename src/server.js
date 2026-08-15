@@ -17,8 +17,6 @@ import checkoutRoute from "./routes/buyer/checkout.route.js";
 import subPlansRoute from "./routes/vendor/sub.plans.route.js";
 import storageRoute from "./routes/vendor/storage.facility.route.js";
 import webhookRoute from "./routes/webhooks/paystack.webhook.route.js";
-// import loanRoute from "./routes/vendor/not-in-useloan.route.services.js";
-// import adminRoute from "./routes/not-in-useadmin.loan.route.js";
 import trainingRoute from "./routes/vendor/training.route.js";
 import superAdminRoute from "./routes/admin/super.admin.route.js";
 import institutionAdminRoute from "./routes/admin/institution.admin.route.js";
@@ -41,10 +39,13 @@ import publicFarmDevelopmentRoute from "./routes/farmDevelopment/public.route.js
 import jobsRoute from "./routes/jobs/jobs.route.js";
 import publicJobRoute from "./routes/jobs/publicJobs..route.js";
 import droneRoute from "./routes/drone/listings.route.js";
-import { startPendingBalanceReleaseJob } from "./lib/wallet/release-pending-balance.js";
-import { startWithdrawalReconciliationJob } from "./lib/wallet/reconcile-withdrawals.js";
+import { startPendingBalanceReleaseJob } from "./jobs/release-pending-balance.js";
+import { startWithdrawalReconciliationJob } from "./jobs/reconcile-withdrawals.js";
 import walletRoute from "./routes/vendor/wallet.routes.js";
 import bankroute from "./routes/bankAccount.route.js";
+import adsRoute from "./modules/ads/routes/ads.vendor.routes.js";
+import { startAdsScheduler } from "./jobs/adsScheduler.js";
+import adsPublicRoute from "./modules/ads/routes/ads.public.routes.js";
 
 const port = process.env.PORT || 5000;
 
@@ -76,11 +77,9 @@ const app = express()
   .use("/api/vendor", webhookRoute)
   .use("/api/vendor/subscription", subPlansRoute)
   .use("/api/vendor/storage", storageRoute)
-  //   .use("/api/vendor/loan", loanRoute)
   .use("/api/aggregator", aggregatorRoute)
   .use("/api/vendor/training", trainingRoute)
   .use("/api/vendor", trainingMaterialRoutes)
-  //   .use("/", adminRoute)
   .use("/api", superAdminRoute)
   .use("/api/admin/institution", institutionAdminRoute)
   .use("/api", programsRoute)
@@ -103,7 +102,9 @@ const app = express()
   .use("/api/vendor/drone", droneRoute)
   .use("/api/drone-marketplace", droneRoute)
   .use("/api/vendor", walletRoute)
-  .use("/api/vendor", bankroute);
+  .use("/api/vendor", bankroute)
+  .use("/api/vendor/ads", adsRoute)
+  .use("/api/public", adsPublicRoute);
 
 const server = http.createServer(app);
 
@@ -143,6 +144,7 @@ server.listen(port, () => {
   console.log(`Server listening on ${port}`);
   startPendingBalanceReleaseJob();
   startWithdrawalReconciliationJob();
+  startAdsScheduler();
 });
 
 export default app;

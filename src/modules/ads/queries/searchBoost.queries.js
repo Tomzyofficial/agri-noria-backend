@@ -11,7 +11,7 @@ WITH params AS (
 organic AS (
   SELECT
     ls.id,
-    ls.product_image,
+    ls.image,
     ls.listing_name,
     ls.price,
     ls.description,
@@ -23,7 +23,7 @@ organic AS (
   FROM listings ls
   JOIN country_utils cu ON cu.vendor_id = ls.account_id
   CROSS JOIN params p
-  WHERE ls.product_status = 'active'
+  WHERE ls.status = 'active'
     AND cu.country_code = p.country_code
     AND (
       p.q IS NULL OR p.q = '' OR

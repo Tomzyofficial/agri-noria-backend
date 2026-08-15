@@ -12,11 +12,11 @@ import pool from "../../../lib/connect.js";
  * @returns {Promise<boolean>}
  */
 export async function verifyProductOwnership(vendorId, listingId) {
-   const { rowCount } = await pool.query(
-      `SELECT 1 FROM listings WHERE id = $1 AND account_id = $2 AND product_status = 'active' LIMIT 1`,
-      [listingId, vendorId],
-   );
-   return rowCount > 0;
+  const { rowCount } = await pool.query(
+    `SELECT 1 FROM listings WHERE id = $1 AND account_id = $2 AND status = 'active' LIMIT 1`,
+    [listingId, vendorId],
+  );
+  return rowCount > 0;
 }
 
 /**
@@ -25,11 +25,11 @@ export async function verifyProductOwnership(vendorId, listingId) {
  * @returns {Promise<boolean>}
  */
 export async function verifyTrainingOwnership(vendorId, trainingId) {
-   const { rowCount } = await pool.query(
-      `SELECT 1 FROM trainings WHERE id = $1 AND trainer_id = $2 LIMIT 1`,
-      [trainingId, vendorId],
-   );
-   return rowCount > 0;
+  const { rowCount } = await pool.query(
+    `SELECT 1 FROM trainings WHERE id = $1 AND trainer_id = $2 LIMIT 1`,
+    [trainingId, vendorId],
+  );
+  return rowCount > 0;
 }
 
 /**
@@ -39,7 +39,7 @@ export async function verifyTrainingOwnership(vendorId, trainingId) {
  * @returns {boolean}
  */
 export function verifyVendorProfileOwnership(vendorId, targetVendorId) {
-   return vendorId === targetVendorId;
+  return vendorId === targetVendorId;
 }
 
 /**
@@ -47,6 +47,9 @@ export function verifyVendorProfileOwnership(vendorId, targetVendorId) {
  * @returns {Promise<boolean>}
  */
 export async function verifyVendorExists(vendorId) {
-   const { rowCount } = await pool.query(`SELECT 1 FROM vendors WHERE id = $1 LIMIT 1`, [vendorId]);
-   return rowCount > 0;
+  const { rowCount } = await pool.query(
+    `SELECT 1 FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId],
+  );
+  return rowCount > 0;
 }

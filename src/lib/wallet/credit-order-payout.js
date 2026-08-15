@@ -43,8 +43,6 @@ async function findOrCreateWallet(
      FOR UPDATE`,
     [ownerId, ownerType, currency, countryCode],
   );
-
-  console.log("retry", retry.rows[0]);
   return retry.rows[0];
 }
 

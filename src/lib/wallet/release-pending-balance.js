@@ -1,9 +1,5 @@
-// lib/wallet/release-pending-balances.js
-
 import pool from "../connect.js";
-import cron from "node-cron";
-
-const HOLD_WINDOW_MINUTES = 5;
+import { HOLD_WINDOW_MINUTES } from "../../jobs/release-pending-balance.js";
 
 // Guards against overlapping runs. node-cron does NOT wait for a
 // previous invocation to finish before firing the next one — if a
@@ -11,8 +7,7 @@ const HOLD_WINDOW_MINUTES = 5;
 // a big backlog, a temporarily locked table), you'd get two copies
 // of this job running at once, both trying to lock the same rows.
 // This flag makes a run skip itself instead of stacking up.
-let isRunning = false;
-
+// This is a job scheduler used inside the jobs dir
 export async function releaseEligiblePendingBalances() {
   const client = await pool.connect();
 
@@ -101,42 +96,4 @@ export async function releaseEligiblePendingBalances() {
   } finally {
     client.release();
   }
-}
-
-// ---------------------------------------------------------
-// Registers the schedule. Call this ONCE, from your server's entry
-// point, after the app has started — not as a side effect of just
-// importing this file. This makes "is the job running?" a matter of
-// checking one obvious line in your startup code, rather than hoping
-// some transitive import happened to pull this file in.
-// ---------------------------------------------------------
-export function startPendingBalanceReleaseJob() {
-  cron.schedule("*/5 * * * *", async () => {
-    if (isRunning) {
-      console.warn(
-        "[release pending balances] Previous run still in progress — skipping this tick.",
-      );
-      return;
-    }
-
-    isRunning = true;
-    const startedAt = Date.now();
-
-    try {
-      const result = await releaseEligiblePendingBalances();
-      console.log(
-        `[release pending balances] Done in ${Date.now() - startedAt}ms — ` +
-          `released: ${result.releasedCount}, skipped: ${result.skippedCount}, ` +
-          `total: ${result.totalReleased}`,
-      );
-    } catch (err) {
-      console.error("[release pending balances] Job crashed:", err);
-    } finally {
-      isRunning = false;
-    }
-  });
-
-  console.log(
-    `[release pending balances] Cron job registered (every 5 minutes, ${HOLD_WINDOW_MINUTES}m hold).`,
-  );
 }
