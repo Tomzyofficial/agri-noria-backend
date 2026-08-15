@@ -1,19 +1,26 @@
-/**
- * Public ads + tracking routes.
- * @module modules/ads/routes/ads.public.routes
- */
-
 import express from "express";
 import { optionalViewer } from "../middleware/optionalViewer.middleware.js";
 import { adsPublicController } from "../controllers/ads.public.controller.js";
 import { adsTrackingController } from "../controllers/ads.tracking.controller.js";
 
-const router = express.Router();
+import { adPublic } from "../controllers/ads.public.controller.js";
 
-router.get("/public/active", (req, res) => adsPublicController.activeCampaigns(req, res));
-router.get("/public/catalog", (req, res) => adsPublicController.boostedCatalog(req, res));
+const adsPublicRoute = express.Router();
 
-router.post("/track/impression", optionalViewer, (req, res) => adsTrackingController.impression(req, res));
-router.post("/track/click", optionalViewer, (req, res) => adsTrackingController.click(req, res));
+adsPublicRoute.get("/public/active", (req, res) =>
+  adsPublicController.activeCampaigns(req, res),
+);
+adsPublicRoute.get("/public/catalog", (req, res) =>
+  adsPublicController.boostedCatalog(req, res),
+);
 
-export default router;
+adsPublicRoute.post("/track/impression", optionalViewer, (req, res) =>
+  adsTrackingController.impression(req, res),
+);
+adsPublicRoute.post("/track/click", optionalViewer, (req, res) =>
+  adsTrackingController.click(req, res),
+);
+
+adsPublicRoute.get("/campaigns", adPublic);
+
+export default adsPublicRoute;

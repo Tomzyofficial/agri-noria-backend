@@ -26,6 +26,7 @@ BEGIN
          'PAUSED',
          'ENDED',
          'CANCELLED'
+         'SCHEDULED'
       );
    END IF;
 END$$;
