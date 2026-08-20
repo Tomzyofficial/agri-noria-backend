@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AD_SURFACES,
   AD_PLACEMENTS,
   AD_STATUSES,
   AD_TARGET_TYPES,
@@ -9,6 +10,7 @@ const uuid = z.string().uuid("Invalid UUID");
 
 export const createCampaignSchema = z
   .object({
+    surfaces: z.enum(AD_SURFACES),
     targetType: z.enum(AD_TARGET_TYPES),
     targetId: z
       .string()
@@ -24,7 +26,7 @@ export const createCampaignSchema = z
     if (data.endAt <= data.startAt) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "endAt must be after startAt",
+        message: "End date must be after start date",
         path: ["endAt"],
       });
     }
@@ -69,13 +71,5 @@ export const activeCampaignsQuerySchema = z
 export const campaignIdParamSchema = z.object({
   campaignId: uuid,
 });
-
-/** Vendor analytics query (optional date filters). */
-export const vendorAnalyticsQuerySchema = z
-  .object({
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-  })
-  .strict();
 
 export const adStatusEnum = z.enum(AD_STATUSES);

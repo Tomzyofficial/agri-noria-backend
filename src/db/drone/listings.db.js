@@ -447,7 +447,7 @@ export const droneListingsDb = {
    */
   getDashboardStats: async (vendorId) => {
     const result = await pool.query(
-      "SELECT COUNT(*) AS total, COUNT(*) FILTER(WHERE product_status='active') AS active FROM listings WHERE account_id=$1",
+      "SELECT COUNT(*) AS total, COUNT(*) FILTER(WHERE status='active') AS active FROM listings WHERE account_id=$1",
       [vendorId],
     );
 

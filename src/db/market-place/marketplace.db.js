@@ -70,7 +70,7 @@ export async function getReviews({ listingId, page, pageSize }) {
   const { rows: reviews } = await pool.query(
     `SELECT r.id, r.rating, r.feedback, r.created_at, b.name AS buyer_name
        FROM reviews r
-       JOIN buyers b ON r.buyer_id = b.buyer_id
+       LEFT JOIN buyers b ON r.buyer_id = b.buyer_id
        WHERE r.listing_id = $1
        ORDER BY r.created_at DESC
        LIMIT $2 OFFSET $3`,
@@ -78,6 +78,19 @@ export async function getReviews({ listingId, page, pageSize }) {
   );
 
   return { reviews, summary: ratings };
+}
+
+export async function checkBuyerEligibleForReview(id, buyerId) {
+  const { rows } = await pool.query(
+    `
+     SELECT 1 FROM orders o
+     JOIN order_items oi ON o.id = oi.order_id
+     WHERE oi.listing_id = $1 AND o.buyer_id = $2
+     LIMIT 1
+    `,
+    [id, buyerId],
+  );
+  return rows.length > 0;
 }
 
 // Submit a new product review
@@ -96,9 +109,7 @@ export async function submitReview(id, rating, feedback, buyerId) {
       `INSERT INTO reviews (listing_id, buyer_id, rating, feedback)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (listing_id, buyer_id)
-       DO UPDATE SET rating = EXCLUDED.rating,
-                     feedback = EXCLUDED.feedback,
-                     updated_at = NOW()
+       DO UPDATE SET rating = EXCLUDED.rating, feedback = EXCLUDED.feedback, updated_at = NOW()
        RETURNING *`,
       [id, buyerId, ratingInt, feedback ?? null],
     );

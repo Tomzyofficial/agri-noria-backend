@@ -7,10 +7,10 @@ export const insertCampaign = `
 INSERT INTO ad_campaigns (
   vendor_id, target_type, target_id, placement, status,
   budget, amount_paid, impressions_count, clicks_count,
-  paystack_reference, start_at, end_at
+  paystack_reference, start_at, end_at, surfaces
 ) VALUES (
   $1, $2::ad_target_type, $3, $4::ad_placement, $5::ad_status,
-  $6, $7, 0, 0, $8, $9, $10
+  $6, $7, 0, 0, $8, $9, $10, $11
 )
 RETURNING *;
 `;
@@ -34,17 +34,17 @@ WHERE vendor_id = $1
 ORDER BY created_at DESC;
 `;
 
-export const updateCampaignEditable = `
-UPDATE ad_campaigns
-SET
-  budget = COALESCE($2, budget),
-  start_at = COALESCE($3, start_at),
-  end_at = COALESCE($4, end_at),
-  updated_at = NOW()
-WHERE id = $1 AND vendor_id = $5
-  AND status IN ('DRAFT'::ad_status, 'PENDING_PAYMENT'::ad_status)
-RETURNING *;
-`;
+// export const updateCampaignEditable = `
+// UPDATE ad_campaigns
+// SET
+//   budget = COALESCE($2, budget),
+//   start_at = COALESCE($3, start_at),
+//   end_at = COALESCE($4, end_at),
+//   updated_at = NOW()
+// WHERE id = $1 AND vendor_id = $5
+//   AND status IN ('DRAFT'::ad_status, 'PENDING_PAYMENT'::ad_status)
+// RETURNING *;
+// `;
 
 export const setCampaignStatus = `
 UPDATE ad_campaigns
@@ -54,17 +54,17 @@ WHERE id = $1 AND vendor_id = $2
 RETURNING *;
 `;
 
-export const activatePaidCampaign = `
-UPDATE ad_campaigns
-SET
-  status = 'ACTIVE'::ad_status,
-  amount_paid = $3,
-  updated_at = NOW()
-WHERE id = $1
-  AND vendor_id = $2
-  AND status = 'PENDING_PAYMENT'::ad_status
-RETURNING *;
-`;
+// export const activatePaidCampaign = `
+// UPDATE ad_campaigns
+// SET
+//   status = 'ACTIVE'::ad_status,
+//   amount_paid = $3,
+//   updated_at = NOW()
+// WHERE id = $1
+//   AND vendor_id = $2
+//   AND status = 'PENDING_PAYMENT'::ad_status
+// RETURNING *;
+// `;
 
 export const deleteCampaignIfAllowed = `
 DELETE FROM ad_campaigns

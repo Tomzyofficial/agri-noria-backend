@@ -130,7 +130,7 @@ export async function upsertVendorBankAccount(
 // Get the vendor's documents row per vendor_id
 export async function getVendorProfileInfo(id) {
   const { rows } = await pool.query(
-    "SELECT vendor_id, business_name, hot_line_phone_number, address, business_desc, id_front_status, id_back_status, license_status FROM vendor_documents WHERE vendor_id = $1 ORDER BY id ASC LIMIT 1",
+    "SELECT business_name, hot_line_phone_number, address, business_desc, id_front_status, id_back_status, license_status FROM vendor_documents WHERE vendor_id = $1 ORDER BY id ASC LIMIT 1",
     [id],
   );
 

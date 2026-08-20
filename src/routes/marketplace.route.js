@@ -50,8 +50,13 @@ marketplaceRoute.get(
 
 // Submit or update a review for a specific product listing farmer and seller
 marketplaceRoute.post(
-  "/marketplace/:id/reviews",
+  "/marketplace/:id/review/create",
   marketplaceController.submitReview,
+);
+
+marketplaceRoute.get(
+  "/marketplace/review/:id/eligible",
+  marketplaceController.checkBuyerEligibleForReview,
 );
 
 // Submit a booking request for a specific storage listing

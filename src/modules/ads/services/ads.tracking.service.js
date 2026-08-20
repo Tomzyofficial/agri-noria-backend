@@ -1,15 +1,6 @@
-/**
- * Impression / click recording with transactional counter updates.
- * @module modules/ads/services/ads.tracking.service
- */
-
 import pool from "../../../lib/connect.js";
 import { selectActiveCampaignById } from "../queries/campaign.queries.js";
 
-/**
- * @param {string | null} ip
- * @returns {string | null} safe for ::inet cast
- */
 function inetOrNull(ip) {
   if (!ip || typeof ip !== "string") return null;
   const t = ip.trim();
@@ -52,16 +43,7 @@ export async function recordImpression({
   }
 }
 
-/**
- * @param {object} input
- * @param {string} input.campaignId
- * @param {string | null} input.viewerUserId
- * @param {string | null} input.ip
- * @param {string | null} input.userAgent
- * @returns {Promise<{ ok: boolean, reason?: string }>}
- */
 export async function recordClick({ campaignId, viewerUserId, ip, userAgent }) {
-  console.log("ccampaign id", campaignId);
   const active = await pool.query(selectActiveCampaignById, [campaignId]);
   if (active.rowCount === 0) {
     return { ok: false, reason: "not_active" };
