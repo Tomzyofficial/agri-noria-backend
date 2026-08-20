@@ -55,7 +55,7 @@ profileController.uploadProfileImage = async (req, res) => {
     if (!vendor) {
       return res.status(404).json({
         success: false,
-        error: "Vendor not found",
+        error: "Vendor profile not found",
       });
     }
 
@@ -99,7 +99,7 @@ profileController.uploadProfileImage = async (req, res) => {
       }
     }
 
-    return res.json({
+    return res.status(201).json({
       success: true,
       message: "Profile image upload successfully",
       data: updated,
@@ -318,15 +318,14 @@ profileController.editProfile = async (req, res) => {
         });
       }
 
-      return res.status(200).json({
+      return res.status(201).json({
         success: true,
         message: "Profile document information updated successfully",
         updateDoc,
       });
     }
 
-    // Update bank details if any bank field is provided
-    if (bank_name || account_name || account_number) {
+    if (bank_name && account_name && account_number) {
       const updateBank = await upsertVendorBankAccount(
         payload.id,
         bank_name || null,
@@ -340,7 +339,7 @@ profileController.editProfile = async (req, res) => {
         });
       }
 
-      return res.status(200).json({
+      return res.status(201).json({
         success: true,
         message: "Bank details updated successfully",
       });

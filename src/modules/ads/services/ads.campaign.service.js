@@ -1,22 +1,21 @@
-/**
- * Campaign lifecycle: create, pay, pause, resume, update, delete.
- * @module modules/ads/services/ads.campaign.service
- */
-
 import pool from "../../../lib/connect.js";
-import { assertPlacementTarget } from "../helpers/placementTarget.rules.js";
-import {
-  verifyProductOwnership,
-  verifyTrainingOwnership,
-  verifyVendorProfileOwnership,
-  verifyVendorExists,
-} from "../helpers/ownership.helpers.js";
+// import { assertPlacementTarget } from "../helpers/placementTarget.rules.js";
+// import {
+//   verifyProductOwnership,
+//   verifyStorageOwnership,
+//   verifyLogisticsOwnership,
+//   verifyFarmServiceOwnership,
+//   verifyTrainingOwnership,
+//   verifyJobOwnership,
+//   verifyVendorExists,
+// } from "../helpers/ownership.helpers.js";
+import verifyOwnership from "../helpers/ownership.helpers.js";
 import {
   insertCampaign,
   updatePaystackReference,
   selectCampaignForVendor,
   listCampaignsByVendor,
-  updateCampaignEditable,
+  //   updateCampaignEditable,
   setCampaignStatus,
   deleteCampaignIfAllowed,
 } from "../queries/campaign.queries.js";
@@ -26,68 +25,60 @@ import {
 } from "./ads.payment.service.js";
 import { settleAdCampaignFromChargeSuccess } from "./ads.settlement.service.js";
 
-/**
- * @param {object} p
- * @param {string} p.vendorId
- * @param {string} p.targetType
- * @param {string} p.targetId
- * @param {string} p.placement
- * @returns {Promise<{ ok: true } | { ok: false, message: string }>}
- */
 export async function verifyAdTarget({
   vendorId,
   targetType,
   targetId,
-  placement,
+  //   placement,
 }) {
-  const pt = assertPlacementTarget(placement, targetType, vendorId, targetId);
-  if (!pt.ok) return { ok: false, message: pt.message };
+  //   const pt = assertPlacementTarget(placement, targetType, vendorId, targetId);
+  //   if (!pt.ok) return { ok: false, message: pt.message };
 
-  if (targetType === "PRODUCT") {
-    const ok = await verifyProductOwnership(vendorId, targetId);
+  if (targetType === "Product") {
+    const ok = await verifyOwnership.product(vendorId, targetId);
     return ok
       ? { ok: true }
       : { ok: false, message: "You do not own this product listing" };
   }
-  if (targetType === "TRAINING") {
-    const ok = await verifyTrainingOwnership(vendorId, targetId);
+  if (targetType === "Storage_listing") {
+    const ok = await verifyOwnership.storage(vendorId, targetId);
     return ok
       ? { ok: true }
-      : { ok: false, message: "You do not own this training session" };
+      : { ok: false, message: "You do not own this storage facility" };
   }
-  if (targetType === "VENDOR") {
-    if (!verifyVendorProfileOwnership(vendorId, targetId)) {
-      return {
-        ok: false,
-        message: "Vendor promotions must target your own vendor account",
-      };
-    }
-    const ex = await verifyVendorExists(vendorId);
-    return ex
+  if (targetType === "Logistics_service") {
+    const ok = await verifyOwnership.logistics(vendorId, targetId);
+    return ok
       ? { ok: true }
-      : { ok: false, message: "Vendor account not found" };
+      : { ok: false, message: "You do not own this logistics service" };
+  }
+  if (targetType === "Farm_service") {
+    const ok = await verifyOwnership.farmService(vendorId, targetId);
+    return ok
+      ? { ok: true }
+      : { ok: false, message: "You do not own this farm service listing" };
+  }
+  if (targetType === "Agricultural_training") {
+    const ok = await verifyOwnership.training(vendorId, targetId);
+    return ok
+      ? { ok: true }
+      : { ok: false, message: "You do not own this training" };
+  }
+  if (targetType === "Agricultural_employment") {
+    const ok = await verifyOwnership.job(vendorId, targetId);
+    return ok
+      ? { ok: true }
+      : { ok: false, message: "You do not own this job listing" };
   }
   return { ok: false, message: "Unsupported target type" };
 }
 
-/**
- * @param {object} input
- * @param {string} input.vendorId
- * @param {string} input.vendorEmail
- * @param {string} input.targetType
- * @param {string} input.targetId
- * @param {string} input.placement
- * @param {number} input.budget
- * @param {Date} input.startAt
- * @param {Date} input.endAt
- * @param {string} input.callbackUrl
- */
 export async function createCampaignWithCheckout(input) {
   const own = await verifyAdTarget({
     vendorId: input.vendorId,
     targetType: input.targetType,
     targetId: input.targetId,
-    placement: input.placement,
+    //   placement: input.placement,
   });
   if (!own.ok) {
     const err = new Error(own.message);
@@ -106,6 +97,7 @@ export async function createCampaignWithCheckout(input) {
     null,
     input.startAt,
     input.endAt,
+    input.surfaces,
   ]);
 
   const campaign = ins.rows[0];
@@ -130,7 +122,6 @@ export async function createCampaignWithCheckout(input) {
       checkout,
     };
   } catch (e) {
-    console.log("error occurred", e);
     await pool.query(
       `UPDATE ad_campaigns SET status = 'CANCELLED'::ad_status WHERE id = $1`,
       [campaign.id],
@@ -139,18 +130,11 @@ export async function createCampaignWithCheckout(input) {
   }
 }
 
-/**
- * @param {string} vendorId
- */
 export async function listVendorCampaigns(vendorId) {
   const { rows } = await pool.query(listCampaignsByVendor, [vendorId]);
   return rows;
 }
 
-/**
- * @param {string} campaignId
- * @param {string} vendorId
- */
 export async function getVendorCampaign(campaignId, vendorId) {
   const { rows } = await pool.query(selectCampaignForVendor, [
     campaignId,
@@ -159,11 +143,6 @@ export async function getVendorCampaign(campaignId, vendorId) {
   return rows[0] ?? null;
 }
 
-/**
- * @param {string} campaignId
- * @param {string} vendorId
- * @param {{ budget?: number, startAt?: Date, endAt?: Date }} patch
- */
 // export async function updateVendorCampaign(campaignId, vendorId, patch) {
 //   const { rows } = await pool.query(updateCampaignEditable, [
 //     campaignId,
@@ -182,10 +161,6 @@ export async function getVendorCampaign(campaignId, vendorId) {
 //   return rows[0];
 // }
 
-/**
- * @param {string} campaignId
- * @param {string} vendorId
- */
 export async function pauseCampaign(campaignId, vendorId) {
   const { rows } = await pool.query(setCampaignStatus, [
     campaignId,
@@ -200,11 +175,6 @@ export async function pauseCampaign(campaignId, vendorId) {
   return rows[0];
 }
 
-/**
- * Resume a paused campaign within its date window after payment.
- * @param {string} campaignId
- * @param {string} vendorId
- */
 export async function activateCampaign(campaignId, vendorId) {
   const { rows } = await pool.query(
     `UPDATE ad_campaigns
@@ -226,10 +196,6 @@ export async function activateCampaign(campaignId, vendorId) {
   return rows[0];
 }
 
-/**
- * @param {string} campaignId
- * @param {string} vendorId
- */
 export async function deleteCampaign(campaignId, vendorId) {
   const { rows } = await pool.query(deleteCampaignIfAllowed, [
     campaignId,
@@ -241,11 +207,6 @@ export async function deleteCampaign(campaignId, vendorId) {
   return true;
 }
 
-/**
- * Manual verification after Paystack redirect (defense in depth with webhook).
- * @param {string} vendorId
- * @param {string} reference
- */
 export async function verifyCampaignPaymentForVendor(vendorId, reference) {
   const verifyRes = await verifyAdTransaction(reference);
   const data = verifyRes?.data;

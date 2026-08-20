@@ -1,27 +1,29 @@
-/**
- * Ads module — canonical enum labels (aligned with PostgreSQL ENUMs).
- * @module modules/ads/helpers/ads.enums
- */
+export const AD_SURFACES = [
+  "Home",
+  "Drone_marketplace",
+  "Storage_marketplace",
+  "Logistics_marketplace",
+  "Farm_services",
+  "Training",
+  "Jobs",
+];
 
-/** @typedef {'PRODUCT' | 'VENDOR' | 'TRAINING'} AdTargetType */
-/** @typedef {'DRAFT' | 'PENDING_PAYMENT' | 'ACTIVE' | 'PAUSED' | 'ENDED' | 'CANCELLED'} AdStatus */
-/** @typedef {'SPONSORED_PRODUCT' | 'FEATURED_VENDOR' | 'PROMOTED_TRAINING' | 'SEARCH_BOOST' | 'HOMEPAGE_FEATURED'} AdPlacement */
+export const AD_TARGET_TYPES = [
+  "Product",
+  "Storage_listing",
+  "Logistics_service",
+  "Farm_service",
+  "Agricultural_training",
+  "Agricultural_employment",
+];
 
-export const AD_TARGET_TYPES = /** @type {const} */ (["PRODUCT", "VENDOR", "TRAINING"]);
+export const AD_STATUSES = [
+  "DRAFT",
+  "PENDING_PAYMENT",
+  "ACTIVE",
+  "PAUSED",
+  "ENDED",
+  "CANCELLED",
+];
 
-export const AD_STATUSES = /** @type {const} */ ([
-   "DRAFT",
-   "PENDING_PAYMENT",
-   "ACTIVE",
-   "PAUSED",
-   "ENDED",
-   "CANCELLED",
-]);
-
-export const AD_PLACEMENTS = /** @type {const} */ ([
-   "SPONSORED_PRODUCT",
-   "FEATURED_VENDOR",
-   "PROMOTED_TRAINING",
-   "SEARCH_BOOST",
-   "HOMEPAGE_FEATURED",
-]);
+export const AD_PLACEMENTS = ["Sponsored_product", "Banner"];

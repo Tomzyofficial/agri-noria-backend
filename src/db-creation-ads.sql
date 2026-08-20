@@ -12,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 DO $$
 BEGIN
    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ad_target_type') THEN
-      CREATE TYPE ad_target_type AS ENUM ('PRODUCT', 'VENDOR', 'TRAINING');
+      CREATE TYPE ad_target_type AS ENUM ('Product', 'Storage_lising', 'Logistics_service', 'Farm_service', 'Agricultural_training', 'Agricultural_employment');
    END IF;
 END$$;
 
@@ -35,11 +35,8 @@ DO $$
 BEGIN
    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ad_placement') THEN
       CREATE TYPE ad_placement AS ENUM (
-         'SPONSORED_PRODUCT',
-         'FEATURED_VENDOR',
-         'PROMOTED_TRAINING',
-         'SEARCH_BOOST',
-         'HOMEPAGE_FEATURED'
+       'Sponsored_product',
+       'Banner'
       );
    END IF;
 END$$;
@@ -61,6 +58,7 @@ CREATE TABLE IF NOT EXISTS ad_campaigns (
    paystack_reference TEXT UNIQUE,
    start_at TIMESTAMPTZ NOT NULL,
    end_at TIMESTAMPTZ NOT NULL,
+   surfaces TEXT NOT NULL,
    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
    CONSTRAINT ad_campaigns_date_range CHECK (end_at > start_at)

@@ -1,13 +1,7 @@
-/**
- * Vendor ads REST handlers.
- * @module modules/ads/controllers/ads.vendor.controller
- */
-
 import {
   createCampaignSchema,
   //   updateCampaignSchema,
   campaignIdParamSchema,
-  vendorAnalyticsQuerySchema,
 } from "../validations/campaign.schemas.js";
 import {
   createCampaignWithCheckout,
@@ -19,19 +13,14 @@ import {
   deleteCampaign,
   verifyCampaignPaymentForVendor,
 } from "../services/ads.campaign.service.js";
-import {
-  getVendorAdsSummary,
-  getVendorEventRollup,
-} from "../services/ads.analytics.service.js";
-import pool from "../../../lib/connect.js";
 import { computeCtrPercent } from "../utils/ctr.utils.js";
 
 const PLACEMENT_RATES = {
-  SPONSORED_PRODUCT: 500, // NGN per day
-  FEATURED_VENDOR: 1500,
-  PROMOTED_TRAINING: 800,
-  SEARCH_BOOST: 1000,
-  HOMEPAGE_FEATURED: 2000,
+  Sponsored_product: 500, // NGN per day
+  Banner: 1500,
+  // PROMOTED_TRAINING: 800,
+  // SEARCH_BOOST: 1000,
+  // HOMEPAGE_FEATURED: 2000,
 };
 
 // async function resolveVendorEmail(vendorId, fallbackEmail) {
@@ -49,7 +38,7 @@ export const adsVendorController = {
     try {
       const parsed = createCampaignSchema.safeParse(req.body);
       if (!parsed.success) {
-        console.log(parsed.error.flatten());
+        console.log("zod schema failed", parsed.error.flatten());
         return res
           .status(400)
           .json({ success: false, error: parsed.error.flatten().fieldErrors });
@@ -85,6 +74,7 @@ export const adsVendorController = {
         budget: budgetNaira,
         startAt: b.startAt,
         endAt: b.endAt,
+        surfaces: b.surfaces,
         callbackUrl,
       });
 
@@ -103,7 +93,7 @@ export const adsVendorController = {
         e.statusCode && Number.isInteger(e.statusCode) ? e.statusCode : 500;
       return res.status(code).json({
         success: false,
-        error: "Internal server error. Please try again later.",
+        error: e.message,
       });
     }
   },
@@ -273,24 +263,6 @@ export const adsVendorController = {
         success: false,
         error: "Internal server error, please try again later.",
       });
-    }
-  },
-
-  async summary(req, res) {
-    try {
-      const parsed = vendorAnalyticsQuerySchema.safeParse(req.query);
-      if (!parsed.success) {
-        return res.status(400).json({ success: false, error: "Invalid query" });
-      }
-      const summary = await getVendorAdsSummary(req.vendor.id);
-      const rollup = await getVendorEventRollup(
-        req.vendor.id,
-        parsed.data.from,
-        parsed.data.to,
-      );
-      return res.json({ success: true, summary, rollup });
-    } catch {
-      return res.status(500).json({ success: false, error: "Server error" });
     }
   },
 };
