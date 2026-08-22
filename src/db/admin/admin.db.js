@@ -393,7 +393,7 @@ async function getInstitutionAnalytics(institutionId, role) {
       ? `(SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem')`
       : `(SELECT COUNT(DISTINCT farmer_id) FROM farmer_programmes WHERE program_id IN (SELECT id FROM programs WHERE created_by = '${institutionId}'))`;
 
-   const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats, extraStats] = await Promise.all([
+   const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats, extraStats, inputMetricsStats] = await Promise.all([
       pool.query(`
          SELECT 
             (SELECT COUNT(*) FROM programs ${programsFilter}) as active_programs,
@@ -432,8 +432,112 @@ async function getInstitutionAnalytics(institutionId, role) {
             (SELECT COALESCE(ROUND((COUNT(*) FILTER (WHERE is_verified = true) * 100.0) / NULLIF(COUNT(*), 0)), 0) FROM vendors WHERE LOWER(role) = 'farmer') as training_adoption,
             (SELECT COUNT(*) FROM trial_plots) as total_trial_plots,
             (SELECT COUNT(*) FROM research_advisories WHERE status = 'active') as research_alerts
+      `),
+      // Input Metrics: allocated, delivered, supplier fulfilment, programme utilisation
+      pool.query(`
+         WITH eco_vendors AS (
+            SELECT id FROM vendors WHERE LOWER(workspace) = 'ecosystem'
+         )
+         SELECT
+            -- Inputs Allocated: count of requests that have been approved/assigned or beyond
+            COUNT(*) FILTER (WHERE funds_status = 'approved' OR items_status IN ('assigned', 'approved', 'dispatched', 'delivered', 'confirmed_delivered')) as inputs_allocated,
+            COALESCE(SUM(total_value) FILTER (WHERE funds_status = 'approved' OR items_status IN ('assigned', 'approved', 'dispatched', 'delivered', 'confirmed_delivered')), 0) as allocated_value,
+            -- Inputs Delivered: count of requests where items have been delivered
+            COUNT(*) FILTER (WHERE items_status IN ('delivered', 'confirmed_delivered')) as inputs_delivered,
+            COALESCE(SUM(total_value) FILTER (WHERE items_status IN ('delivered', 'confirmed_delivered')), 0) as delivered_value,
+            -- Supplier Fulfilment: % of assigned requests that have been delivered
+            COALESCE(
+               ROUND(
+                  (COUNT(*) FILTER (WHERE distributor_id IS NOT NULL AND items_status IN ('delivered', 'confirmed_delivered')) * 100.0) /
+                  NULLIF(COUNT(*) FILTER (WHERE distributor_id IS NOT NULL), 0),
+                  1
+               ),
+               0
+            ) as supplier_fulfilment,
+            -- Total requests for reference
+            COUNT(*) as total_requests
+         FROM input_requests ir
+         JOIN farmer_profiles fp ON ir.farmer_id = fp.id
+         WHERE fp.vendor_id IN (SELECT id FROM eco_vendors)
       `)
    ]);
+
+   // Programme Utilisation: % of programme wallet funds that have been deployed
+   let programmeUtilisation = 0;
+   try {
+      const utilRes = await pool.query(`
+         SELECT
+            COALESCE(SUM(pw.balance), 0) as remaining_balance,
+            COALESCE(SUM(ew.total_escrowed), 0) as total_escrowed
+         FROM program_wallets pw
+         LEFT JOIN (
+            SELECT program_id, SUM(amount) as total_escrowed 
+            FROM escrow_wallets 
+            GROUP BY program_id
+         ) ew ON pw.program_id = ew.program_id
+      `);
+      const remaining = parseFloat(utilRes.rows[0]?.remaining_balance || 0);
+      const escrowed = parseFloat(utilRes.rows[0]?.total_escrowed || 0);
+      const totalFunded = remaining + escrowed;
+      programmeUtilisation = totalFunded > 0 ? Math.round((escrowed / totalFunded) * 100) : 0;
+   } catch (e) {
+      // Fallback: use input_requests approved value vs total programme wallet balance
+      try {
+         const fallbackRes = await pool.query(`
+            SELECT
+               COALESCE(SUM(balance), 0) as total_balance
+            FROM program_wallets
+         `);
+         const totalBalance = parseFloat(fallbackRes.rows[0]?.total_balance || 0);
+         const approvedValue = parseFloat(inputStats.rows[0]?.approved_value || 0);
+         const totalFunded = totalBalance + approvedValue;
+         programmeUtilisation = totalFunded > 0 ? Math.round((approvedValue / totalFunded) * 100) : 0;
+      } catch (e2) {
+         programmeUtilisation = 0;
+      }
+   }
+
+   let scm = {
+      harvestVolume: 0, harvestBatches: 0, 
+      logisticsActive: 0, logisticsDelivered: 0,
+      inventoryVolume: 0, inventoryValue: 0,
+      salesValue: 0, 
+      buyerAgreements: 0, buyerFinancing: 0
+   };
+   try {
+      const scRes = await pool.query(`
+         WITH eco_vendors AS (
+            SELECT id FROM vendors WHERE LOWER(workspace) = 'ecosystem'
+         )
+         SELECT 
+            (SELECT COALESCE(SUM(quantity_mt), 0) FROM harvest_batches WHERE vendor_id IN (SELECT id FROM eco_vendors)) as harvest_volume,
+            (SELECT COUNT(*) FROM harvest_batches WHERE vendor_id IN (SELECT id FROM eco_vendors)) as harvest_batches,
+            (SELECT COUNT(*) FROM transit_logs WHERE status = 'in_transit' AND transporter_id IN (SELECT id FROM eco_vendors)) as logistics_active,
+            (SELECT COUNT(*) FROM transit_logs WHERE status = 'delivered' AND transporter_id IN (SELECT id FROM eco_vendors)) as logistics_delivered,
+            (SELECT COALESCE(SUM(current_quantity_mt), 0) FROM inventory_positions WHERE status = 'Available' AND warehouse_id IN (SELECT id FROM eco_vendors)) as inventory_volume,
+            (SELECT COALESCE(SUM(market_value), 0) FROM inventory_positions WHERE status = 'Available' AND warehouse_id IN (SELECT id FROM eco_vendors)) as inventory_value,
+            (SELECT COALESCE(SUM(s.buyer_payment), 0) FROM settlements s JOIN harvest_batches hb ON s.batch_id = hb.batch_id WHERE hb.vendor_id IN (SELECT id FROM eco_vendors)) as sales_value,
+            (SELECT COUNT(*) FROM buyer_agreements WHERE status IN ('signed', 'approved', 'paid', 'completed') AND aggregator_id IN (SELECT id FROM eco_vendors)) as buyer_agreements,
+            (SELECT COALESCE(SUM(financing_amount), 0) FROM buyer_agreements WHERE status IN ('signed', 'approved', 'paid', 'completed') AND aggregator_id IN (SELECT id FROM eco_vendors)) as buyer_financing
+      `);
+      
+      const scRows = scRes.rows[0] || {};
+      scm = {
+         harvestVolume: parseFloat(scRows.harvest_volume || 0),
+         harvestBatches: parseInt(scRows.harvest_batches || 0),
+         logisticsActive: parseInt(scRows.logistics_active || 0),
+         logisticsDelivered: parseInt(scRows.logistics_delivered || 0),
+         inventoryVolume: parseFloat(scRows.inventory_volume || 0),
+         inventoryValue: parseFloat(scRows.inventory_value || 0),
+         salesValue: parseFloat(scRows.sales_value || 0),
+         buyerAgreements: parseInt(scRows.buyer_agreements || 0),
+         buyerFinancing: parseFloat(scRows.buyer_financing || 0)
+      };
+   } catch (e) {
+      console.warn("Supply chain metrics query failed, some tables might not exist:", e.message);
+   }
+
+   const im = inputMetricsStats.rows[0];
 
    return {
       overview: {
@@ -452,6 +556,16 @@ async function getInstitutionAnalytics(institutionId, role) {
          irrigationCoverage: parseInt(extraStats.rows[0].training_adoption || 0),
          womenPercentage: parseInt(extraStats.rows[0].program_kpi || 0)
       },
+      inputMetrics: {
+         inputsAllocated: parseInt(im.inputs_allocated || 0),
+         allocatedValue: parseFloat(im.allocated_value || 0),
+         inputsDelivered: parseInt(im.inputs_delivered || 0),
+         deliveredValue: parseFloat(im.delivered_value || 0),
+         supplierFulfilment: parseFloat(im.supplier_fulfilment || 0),
+         programmeUtilisation: programmeUtilisation,
+         totalRequests: parseInt(im.total_requests || 0)
+      },
+      supplyChainMetrics: scm,
       disbursements: {
          pendingCount: parseInt(inputStats.rows[0].pending_count),
          pendingValue: parseFloat(inputStats.rows[0].pending_value),
