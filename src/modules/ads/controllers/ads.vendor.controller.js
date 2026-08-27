@@ -14,6 +14,7 @@ import {
   verifyCampaignPaymentForVendor,
 } from "../services/ads.campaign.service.js";
 import { computeCtrPercent } from "../utils/ctr.utils.js";
+import { verifyVendorToken } from "../../../sessions/vendor.auth.session.js";
 
 const PLACEMENT_RATES = {
   Sponsored_product: 500, // NGN per day
@@ -21,6 +22,22 @@ const PLACEMENT_RATES = {
   // PROMOTED_TRAINING: 800,
   // SEARCH_BOOST: 1000,
   // HOMEPAGE_FEATURED: 2000,
+};
+
+// const CALLBACK_PATHS = {
+//   Drone_marketplace: "/marketplace/drone/ads",
+//   Store_marketplace: "/marketplace/store/ads",
+// };
+
+const callbackFnc = async (req) => {
+  const payload = await verifyVendorToken(req);
+  const workspace = payload?.workspace;
+  const role = payload?.role;
+
+  if (workspace === "marketplace" && (role === "farmer" || role === "seller")) {
+    return `/marketplace/store/ads`;
+  }
+  return `/${workspace}/${role}/ads`;
 };
 
 // async function resolveVendorEmail(vendorId, fallbackEmail) {
@@ -35,6 +52,7 @@ const PLACEMENT_RATES = {
 
 export const adsVendorController = {
   async create(req, res) {
+    const callback = await callbackFnc(req);
     try {
       const parsed = createCampaignSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -52,12 +70,11 @@ export const adsVendorController = {
           error: "Vendor email is required for billing",
         });
       }
-
       const base =
         process.env.APP_BASEURL ||
         process.env.FRONTEND_APP_URL ||
         "http://localhost:3000";
-      const callbackUrl = `${base.replace(/\/$/, "")}/marketplace/store/ads`;
+      const callbackUrl = `${base}${callback}`;
 
       const days = Math.ceil(
         (new Date(b.endAt) - new Date(b.startAt)) / 86400000,

@@ -392,8 +392,8 @@ ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS storage_facility(
    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
    account_id UUID REFERENCES vendors(id) ON DELETE CASCADE,
-   storage_image CHARACTER VARYING NOT NULL,
-   storage_name TEXT NOT NULL,
+   image TEXT[] NOT NULL,
+   listing_name TEXT NOT NULL,
    href TEXT NOT NULL,
    storage_type TEXT NOT NULL,
    location TEXT NOT NULL,
@@ -407,7 +407,8 @@ CREATE TABLE IF NOT EXISTS storage_facility(
    view_count INTEGER NOT NULL DEFAULT 0,
    booking_click_count INTEGER NOT NULL DEFAULT 0,
    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+   public_id TEXT[] NOT NULL
 );
 
 -- Indexes

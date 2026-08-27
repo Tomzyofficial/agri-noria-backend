@@ -3,7 +3,10 @@ import { optionalViewer } from "../middleware/optionalViewer.middleware.js";
 // import { adsPublicController } from "../controllers/ads.public.controller.js";
 import { adsTrackingController } from "../controllers/ads.tracking.controller.js";
 
-import { adPublic } from "../controllers/ads.public.controller.js";
+import {
+  adPublic,
+  //   adPublicHome,
+} from "../controllers/ads.public.controller.js";
 
 const adsPublicRoute = express.Router();
 
@@ -21,6 +24,11 @@ adsPublicRoute.post("/track/click", optionalViewer, (req, res) =>
   adsTrackingController.click(req, res),
 );
 
-adsPublicRoute.get("/campaigns", adPublic);
+adsPublicRoute.get(
+  "/campaigns/home-drone-marketplace",
+  adPublic.activeDroneHomeCampaigns,
+);
+
+// adsPublicRoute.get("/campaigns/home", adPublic.activeHomeCampaigns);
 
 export default adsPublicRoute;

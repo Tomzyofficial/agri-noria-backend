@@ -1,8 +1,9 @@
-/**
- * Public ads endpoints (no vendor auth).
- * @module modules/ads/controllers/ads.public.controller
- */
-import { getActiveSponsoredCampaigns } from "../services/ads.public.service.js";
+// import {
+//   getActiveHomeCampaigns,
+//   getActiveSponsoredCampaigns,
+// } from "../services/ads.public.service.js";
+
+import { adCampaignsPublic } from "../services/ads.public.service.js";
 // import { activeCampaignsQuerySchema } from "../validations/campaign.schemas.js";
 // import {
 //   getHydratedActiveCampaigns,
@@ -52,8 +53,21 @@ import { getActiveSponsoredCampaigns } from "../services/ads.public.service.js";
 //   },
 // };
 
-export const adPublic = async (req, res) => {
-  const { country } = req.query;
-  const result = await getActiveSponsoredCampaigns(country);
-  return res.status(200).json({ result });
+export const adPublic = {
+  //   activeHomeCampaigns: async (req, res) => {
+  //     const { country, surface } = req.query;
+  //     const result = await adCampaignsPublic.activeHomeCampaigns(
+  //       country,
+  //       surface,
+  //     );
+  //     return res.status(200).json({ result });
+  //   },
+  activeDroneHomeCampaigns: async (req, res) => {
+    const { country, surface } = req.query;
+    const result = await adCampaignsPublic.activeDroneHomeCampaigns(
+      country,
+      surface,
+    );
+    return res.status(200).json({ result });
+  },
 };

@@ -4,11 +4,17 @@ import {
   getQuoteRequests,
   updateQuoteRequestStatus,
 } from "../../db/drone/listings.db.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 import { AppError } from "../../utils/AppError.js";
 
 const droneController = {};
 
 droneController.createDroneListing = async (req, res) => {
+  let uploadedPublicIds = [];
+
   try {
     const payload = await verifyVendorToken(req);
     if (!payload) {
@@ -17,16 +23,25 @@ droneController.createDroneListing = async (req, res) => {
 
     const listing = req.body;
     const files = req.files?.image;
+    const savedFiles = files?.length
+      ? await saveFileToCloudinary(files, "drones", "image")
+      : [];
+    uploadedPublicIds = savedFiles.map((file) => file.public_id);
     const result = await droneListingsDb.createListing(payload.id, {
       ...listing,
-      image: files || null,
+      image: {
+        urls: savedFiles.map((file) => file.secure_url),
+        publicIds: uploadedPublicIds,
+      },
     });
     if (result) {
       res.status(201).json(result);
     } else {
+      await deleteFileFromCloudinary(uploadedPublicIds);
       res.status(400).json({ error: "Failed to create drone listing" });
     }
   } catch (error) {
+    await deleteFileFromCloudinary(uploadedPublicIds);
     console.error("Error creating drone listing:", error);
     res.status(500).json({ error: "Internal server error. Try again later." });
   }
@@ -87,22 +102,38 @@ droneController.updateDroneListing = async (req, res) => {
 
     const { id } = req.params;
     const files = req.files?.image;
+    let uploadedPublicIds = [];
 
-    const updates = { ...req.body };
-    if (files?.length) {
-      updates.image = files;
+    try {
+      const updates = { ...req.body };
+      if (files?.length) {
+        const savedFiles = await saveFileToCloudinary(files, "drones", "image");
+        uploadedPublicIds = savedFiles.map((file) => file.public_id);
+        updates.image = {
+          urls: savedFiles.map((file) => file.secure_url),
+          publicIds: uploadedPublicIds,
+        };
+      }
+
+      const result = await droneListingsDb.updateListing(
+        id,
+        payload.id,
+        updates,
+      );
+
+      if (!result) {
+        await deleteFileFromCloudinary(uploadedPublicIds);
+        return res.status(404).json({
+          success: false,
+          error: "Listing not found or unauthorized",
+        });
+      }
+
+      return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      await deleteFileFromCloudinary(uploadedPublicIds);
+      throw error;
     }
-
-    const result = await droneListingsDb.updateListing(id, payload.id, updates);
-
-    if (!result) {
-      return res.status(404).json({
-        success: false,
-        error: "Listing not found or unauthorized",
-      });
-    }
-
-    return res.status(200).json({ success: true, data: result });
   } catch (error) {
     console.error("Error updating drone listing:", error);
     return res.status(500).json({
@@ -128,6 +159,14 @@ droneController.deleteDroneListing = async (req, res) => {
         success: false,
         error: "Listing not found or unauthorized",
       });
+    }
+
+    if (result.publicIds?.length) {
+      try {
+        await deleteFileFromCloudinary(result.publicIds);
+      } catch (cleanupError) {
+        console.error("Drone image cleanup failed:", cleanupError);
+      }
     }
 
     return res.status(200).json({ success: true, data: result });
@@ -157,10 +196,11 @@ droneController.getDashboardStats = async (req, res) => {
 
 droneController.getPublicListings = async (req, res) => {
   try {
-    const { page = 1, limit = 12 } = req.query;
+    const { page = 1, limit = 12, country } = req.query;
     const listings = await droneListingsDb.getPublicListings(
       Number(page),
       Number(limit),
+      country,
     );
     return res.status(200).json({ success: true, data: listings });
   } catch (error) {

@@ -1,8 +1,4 @@
 import pool from "../../lib/connect.js";
-import {
-  saveFileToCloudinary,
-  deleteFileFromCloudinary,
-} from "../../lib/cloudinary.img.js";
 
 export const droneListingsDb = {
   createListing: async (vendorId, listing) => {
@@ -38,24 +34,18 @@ export const droneListingsDb = {
       const result = await client.query(
         `
          INSERT INTO listings (
-            account_id,
-            role,
-            listing_name,
-            description,
-            price,
-            location,
-            unit,
-            available_quantity,
-            category
-         )
-         VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9
+            account_id, role, image, public_id, listing_name, description, price, location, unit,
+            available_quantity, category)
+            VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
          )
          RETURNING id
       `,
         [
           vendorId,
           "drone",
+          image?.urls,
+          image?.publicIds,
           listingName,
           description,
           salePrice,
@@ -67,24 +57,6 @@ export const droneListingsDb = {
       );
 
       if (result.rows[0].id) {
-        console.log("saved listing id", result.rows[0].id);
-        const saveFileToCloud = image
-          ? await saveFileToCloudinary(image, "drones", "image")
-          : null;
-
-        const imageUrl = saveFileToCloud
-          ? saveFileToCloud.map((item) => item.secure_url)
-          : null;
-
-        const publicId = saveFileToCloud
-          ? saveFileToCloud.map((item) => item.public_id)
-          : null;
-
-        await client.query(
-          "UPDATE listings SET image = $1, public_id = $2 WHERE id = $3",
-          [imageUrl, publicId, result.rows[0].id],
-        );
-
         await client.query(
           "INSERT INTO drone_listing_details (listing_id, manufacturer, model, listing_type, condition, warranty, rental_price, rental_period, max_payload, operating_range, camera_type, flight_time, provide_service, service_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
           [
@@ -237,9 +209,8 @@ export const droneListingsDb = {
       let publicIds = existing.rows[0].public_id;
 
       if (image?.length) {
-        const saved = await saveFileToCloudinary(image, "drones", "image");
-        const newUrls = saved.map((item) => item.secure_url);
-        const newIds = saved.map((item) => item.public_id);
+        const newUrls = image.urls || [];
+        const newIds = image.publicIds || [];
         imageUrls = [...(imageUrls || []), ...newUrls];
         publicIds = [...(publicIds || []), ...newIds];
       }
@@ -333,52 +304,6 @@ export const droneListingsDb = {
       }
 
       await client.query("COMMIT");
-
-      /*  const updatedListing = await pool.query(
-        `
-         SELECT
-           ls.id,
-           ls.account_id,
-           ls.role,
-           ls.image,
-           ls.public_id,
-           ls.listing_name,
-           ls.description,
-           ls.price,
-           ls.location,
-           ls.created_at,
-           ls.updated_at,
-           ls.product_status,
-           ls.available_quantity,
-           ls.unit,
-           ls.category,
-           cu.country_code,
-           cu.currency,
-           dld.id AS drone_detail_id,
-           dld.listing_id AS drone_listing_id,
-           dld.manufacturer,
-           dld.model,
-           dld.listing_type,
-           dld.condition,
-           dld.warranty,
-           dld.rental_price,
-           dld.rental_period,
-           dld.max_payload,
-           dld.operating_range,
-           dld.camera_type,
-           dld.flight_time,
-           dld.provide_service,
-           dld.service_type
-         FROM listings ls
-         LEFT JOIN country_utils cu ON cu.vendor_id = ls.account_id
-         LEFT JOIN drone_listing_details dld ON dld.listing_id = ls.id
-         WHERE ls.id = $1 AND ls.account_id = $2
-         LIMIT 1
-        `,
-        [listingId, vendorId],
-      ); */
-
-      // return updatedListing.rows[0] || null;
       return true;
     } catch (error) {
       await client.query("ROLLBACK");
@@ -411,28 +336,22 @@ export const droneListingsDb = {
         };
       }
 
-      const publicId = productCheck.rows[0].public_id;
+      const publicIds = Array.isArray(productCheck.rows[0].public_id)
+        ? productCheck.rows[0].public_id
+        : [];
 
-      if (publicId.length > 0) {
-        try {
-          await Promise.all(
-            publicId.map(async (element) => {
-              await deleteFileFromCloudinary(element);
-            }),
-          );
-        } catch {
-          await client.query("ROLLBACK");
-          return { error: "Failed to delete drone image", success: false };
-        }
-      }
-
-      await pool.query(
-        `DELETE FROM listings WHERE id = $1 AND account_id = $2`,
+      const deleteResult = await client.query(
+        `DELETE FROM listings WHERE id = $1 AND account_id = $2 RETURNING id`,
         [listingId, vendorId],
       );
 
+      if (deleteResult.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, error: "Failed to delete drone listing" };
+      }
+
       await client.query("COMMIT");
-      return { success: true };
+      return { success: true, publicIds };
     } catch (error) {
       console.log(error);
       await client.query("ROLLBACK");
@@ -457,7 +376,7 @@ export const droneListingsDb = {
   /**
    * Get all active listings (public)
    */
-  getPublicListings: async (page = 1, limit = 12) => {
+  getPublicListings: async (page = 1, limit = 12, country) => {
     const offset = (page - 1) * limit;
 
     const listings = await pool.query(
@@ -466,11 +385,11 @@ export const droneListingsDb = {
          FROM listings ls
          LEFT JOIN drone_listing_details dld ON ls.id = dld.listing_id
          LEFT JOIN country_utils cu ON ls.account_id = cu.vendor_id
-         WHERE ls.status = 'active' AND ls.role = 'drone'
+         WHERE ls.status = 'active' AND ls.role = 'drone' AND cu.country_code = $3
          ORDER BY ls.created_at DESC
          LIMIT $1 OFFSET $2
       `,
-      [limit, offset],
+      [limit, offset, country],
     );
 
     const total = await pool.query(

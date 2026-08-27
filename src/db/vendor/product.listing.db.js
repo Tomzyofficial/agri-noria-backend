@@ -1,8 +1,4 @@
 import pool from "../../lib/connect.js";
-import {
-  deleteFileFromCloudinary,
-  saveFileToCloudinary,
-} from "../../lib/cloudinary.img.js";
 
 // Create listings
 export async function createListingWithDetails(
@@ -48,25 +44,10 @@ export async function createListingWithDetails(
       ],
     );
 
-    //  if (listingResult.rows.length === 0) {
-    //    await client.query("ROLLBACK");
-    //    return { success: false, error: "Failed to create product listing" };
-    //  }
-
-    //  if (product_image) {
-    //    const saveImageToCloud = await saveFileToCloudinary(
-    //      product_image,
-    //      "marketplace",
-    //      "image",
-    //    );
-    //    const imageUrl = saveImageToCloud?.map((img) => img.secure_url);
-    //    const publicId = saveImageToCloud?.map((img) => img.public_id);
-
-    //    await client.query(
-    //      `UPDATE listings SET product_image = $1, public_id = $2 WHERE id = $3`,
-    //      [imageUrl, publicId, listingResult.rows[0].id],
-    //    );
-    //  }
+    if (listingResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Failed to create product listing" };
+    }
 
     await client.query("COMMIT");
     return { success: true, data: listingResult.rows[0] };
@@ -151,6 +132,7 @@ export async function updateListings(
     );
 
     if (existingListing.rows.length === 0) {
+      await client.query("ROLLBACK");
       return { success: false, error: "Product not found or not authorized" };
     }
 
@@ -159,19 +141,9 @@ export async function updateListings(
     let mergedImages = null;
     let mergedPublicIds = null;
 
-    if (product_image) {
-      console.log(product_image);
-      const newProductImg = await saveFileToCloudinary(
-        product_image,
-        "marketplace",
-        "image",
-      );
-
-      const newImageUrls = newProductImg?.map((img) => img.secure_url) ?? [];
-      const newPublicIds = newProductImg?.map((img) => img.public_id) ?? [];
-
-      // current.image / current.public_id are expected to be arrays already
-      // (or null/empty for a listing that has no images yet)
+    if (product_image?.urls?.length) {
+      const newImageUrls = product_image.urls;
+      const newPublicIds = product_image.publicIds || [];
       const existingImages = Array.isArray(current.image) ? current.image : [];
       const existingPublicIds = Array.isArray(current.public_id)
         ? current.public_id
@@ -221,6 +193,14 @@ export async function updateListings(
       ],
     );
 
+    if (result.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: "Failed to update product listing",
+      };
+    }
+
     await client.query("COMMIT");
     return { success: true, data: result.rows[0] };
   } catch (error) {
@@ -257,27 +237,23 @@ export async function deleteProduct(productId, id) {
       };
     }
 
-    const oldProductId = productCheck.rows[0].public_id;
-    try {
-      await deleteFileFromCloudinary(oldProductId);
-    } catch {
-      await client.query("ROLLBACK");
-      return { error: "Failed to delete product image", success: false };
-    }
+    const publicIds = Array.isArray(productCheck.rows[0].public_id)
+      ? productCheck.rows[0].public_id
+      : [];
 
-    const deleteProduct = await client.query(
-      "DELETE FROM listings WHERE id = $1 AND account_id = $2",
+    const deleteProductResult = await client.query(
+      "DELETE FROM listings WHERE id = $1 AND account_id = $2 RETURNING id",
       [productId, id],
     );
 
-    if (deleteProduct.rowCount === 0) {
+    if (deleteProductResult.rowCount === 0) {
       await client.query("ROLLBACK");
       return { success: false, error: "Failed to delete product" };
     }
 
     await client.query("COMMIT");
 
-    return { success: true };
+    return { success: true, publicIds };
   } catch (error) {
     await client.query("ROLLBACK");
     return { error: error, success: false };

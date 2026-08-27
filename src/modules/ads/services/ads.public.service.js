@@ -131,15 +131,43 @@ import pool from "../../../lib/connect.js";
 //   return new Map(rows.map((r) => [String(r.id), r]));
 // }
 
-export async function getActiveSponsoredCampaigns(country) {
-  const { rows } = await pool.query(
-    `SELECT ls.id, ls.listing_name, ls.price, ls.image, ls.description,
-      cu.currency, cu.country_code, ls.account_id, ac.id AS campaign_id, ac.start_at, ac.end_at, ac.surfaces, ac.placement, ac.target_id 
+export const adCampaignsPublic = {
+  //   activeHomeCampaigns: async function (country, surface) {
+  //     const { rows } = await pool.query(
+  //       `SELECT ls.id, ls.listing_name, ls.price, ls.image, ls.description,
+  //       cu.currency, cu.country_code, ls.account_id, ac.id AS campaign_id, ac.start_at, ac.end_at, ac.surfaces, ac.placement, ac.target_id
+  //       FROM listings ls
+  //       JOIN country_utils cu ON cu.vendor_id = ls.account_id
+  //       JOIN ad_campaigns ac ON ac.target_id = ls.id
+  //        WHERE ac.status = 'ACTIVE'::ad_status AND ac.start_at <= NOW() AND end_at >= NOW() AND cu.country_code = $1 AND ac.surfaces = $2`,
+  //       [country, surface],
+  //     );
+  //     return rows || null;
+  //   },
+
+  // Unified query for both home (farmer, seller) and drone marketplace ad campaigns
+  activeDroneHomeCampaigns: async (country, surface) => {
+    const { rows } = await pool.query(
+      `SELECT ls.id, ls.listing_name, ls.price, ls.image, ls.description, ls.location,
+      ls.available_quantity, ls.unit, ls.category, ls.role,
+      cu.currency, cu.country_code, ls.account_id,
+      dld.manufacturer, dld.model, dld.listing_type, dld.condition,
+      dld.warranty, dld.rental_price, dld.rental_period, dld.max_payload,
+      dld.operating_range, dld.camera_type, dld.flight_time, dld.provide_service,
+      dld.service_type,
+      ac.id AS campaign_id, ac.start_at, ac.end_at, ac.surfaces, ac.placement, ac.target_id 
       FROM listings ls 
       JOIN country_utils cu ON cu.vendor_id = ls.account_id
       JOIN ad_campaigns ac ON ac.target_id = ls.id
-       WHERE ac.status = 'ACTIVE'::ad_status AND ac.start_at <= NOW() AND end_at >= NOW() AND cu.country_code = $1`,
-    [country],
-  );
-  return rows || null;
-}
+      LEFT JOIN drone_listing_details dld ON dld.listing_id = ls.id
+      WHERE ac.status = 'ACTIVE'::ad_status
+        AND ac.start_at <= NOW()
+        AND ac.end_at >= NOW()
+        AND cu.country_code = $1
+        AND ac.surfaces = $2
+      ORDER BY ac.amount_paid DESC, ac.created_at ASC`,
+      [country, surface],
+    );
+    return rows || null;
+  },
+};
