@@ -167,6 +167,8 @@ productController.editProduct = async (req, res) => {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
+  let uploadedPublicIds = [];
+
   try {
     const {
       product_id,
@@ -183,8 +185,7 @@ productController.editProduct = async (req, res) => {
       attributes,
     } = req.body;
 
-    const product_image = req.files?.image;
-    // Parse attributes if sent as string
+    const productFiles = req.files?.image || [];
     let parsedAttributes = attributes;
     if (typeof attributes === "string") {
       try {
@@ -198,11 +199,19 @@ productController.editProduct = async (req, res) => {
       }
     }
 
+    const savedFiles = productFiles.length
+      ? await saveFileToCloudinary(productFiles, "marketplace", "image")
+      : [];
+    uploadedPublicIds = savedFiles.map((file) => file.public_id);
+
     // Update unified listings table
     const listings = await updateListings(
       product_id,
       payload.id,
-      product_image,
+      {
+        urls: savedFiles.map((file) => file.secure_url),
+        publicIds: uploadedPublicIds,
+      },
       listing_name,
       description,
       price,
@@ -217,6 +226,7 @@ productController.editProduct = async (req, res) => {
     );
 
     if (!listings.success) {
+      await deleteFileFromCloudinary(uploadedPublicIds);
       return res.status(400).json({
         success: false,
         error: listings.error || "Failed to update product listing",
@@ -229,6 +239,7 @@ productController.editProduct = async (req, res) => {
       data: listings.data,
     });
   } catch (error) {
+    await deleteFileFromCloudinary(uploadedPublicIds);
     console.error("Controller error:", error);
     return res.status(500).json({
       success: false,
@@ -306,6 +317,14 @@ productController.deleteProduct = async (req, res) => {
         success: false,
         error: deleteResult?.error || "Failed to delete product",
       });
+    }
+
+    if (deleteResult.publicIds?.length) {
+      try {
+        await deleteFileFromCloudinary(deleteResult.publicIds);
+      } catch (cleanupError) {
+        console.error("Product image cleanup failed:", cleanupError);
+      }
     }
 
     return res

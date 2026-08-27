@@ -152,6 +152,7 @@ logisiticsOperation.getVehicles = async (req, res) => {
   }
 };
 
+// Public marketplace
 logisiticsOperation.getListedVehicles = async (req, res) => {
   let country_code;
   let vehicleId = null;

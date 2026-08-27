@@ -76,20 +76,9 @@ export async function getListedVehicles({
 } = {}) {
   try {
     const vehicleQuery = `
-      SELECT
-        veh.id,
-        veh.title,
-        veh.vehicle_type,
-        veh.base_location,
-        veh.operating_regions,
-        veh.pricing_model,
-        veh.rate_amount,
-        veh.image,
-        veh.status,
-        cu.country_code,
-        cu.currency
-      FROM vehicles veh
-      LEFT JOIN country_utils cu ON cu.vendor_id = veh.vendor_id
+      SELECT veh.id, veh.title, veh.vehicle_type, veh.base_location, veh.operating_regions,
+      veh.pricing_model, veh.rate_amount, veh.image, veh.status, cu.country_code, cu.currency
+      FROM vehicles veh LEFT JOIN country_utils cu ON cu.vendor_id = veh.vendor_id
       WHERE cu.country_code = $1
       ORDER BY CASE COALESCE(veh.status, 'available')
           WHEN 'available' THEN 0

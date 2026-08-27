@@ -26,13 +26,11 @@ export const adsTrackingController = {
         userAgent: ua,
       });
       if (!result.ok) {
-        console.log("tracking failed", result.reason);
         return res
           .status(422)
           .json({ success: false, error: result.reason || "not_tracked" });
       }
-      console.log("tracked", result);
-      return res.json({ success: true });
+      return res.json({ success: true, counted: result.counted });
     } catch (e) {
       console.error("[ads.track.impression]", e);
       return res.status(500).json({ success: false, error: "Server error" });
@@ -41,10 +39,8 @@ export const adsTrackingController = {
 
   async click(req, res) {
     try {
-      console.log("req.body", req.body);
       const parsed = clickTrackSchema.safeParse(req.body);
       if (!parsed.success) {
-        console.log("failed", parsed.error.flatten());
         return res
           .status(400)
           .json({ success: false, error: parsed.error.flatten() });
@@ -58,13 +54,10 @@ export const adsTrackingController = {
         userAgent: ua,
       });
       if (!result.ok) {
-        console.log("tracking failed for click", result.reason);
-
         return res
           .status(422)
           .json({ success: false, error: result.reason || "not_tracked" });
       }
-      console.log("tracked for click", result);
       return res.json({ success: true });
     } catch (e) {
       console.error("[ads.track.click]", e);

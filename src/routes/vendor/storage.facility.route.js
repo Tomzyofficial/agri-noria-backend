@@ -7,7 +7,7 @@ const storageRoute = express.Router();
 // Create new storage facility
 storageRoute.post(
   "/add-storage",
-  upload.single("storage_image"),
+  upload.fields([{ name: "image", maxCount: 5 }]),
   storage_facilities.create,
 );
 
@@ -23,7 +23,7 @@ storageRoute.get("/quote-requests", storage_facilities.getQuoteRequests);
 // Edit storage facility per listing id
 storageRoute.patch(
   "/edit-item",
-  upload.single("storage_image"),
+  upload.fields([{ name: "storage_image", maxCount: 5 }]),
   storage_facilities.editStorage,
 );
 

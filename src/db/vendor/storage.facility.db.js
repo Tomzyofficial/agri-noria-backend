@@ -1,11 +1,10 @@
-import { deleteFileFromCloudinary } from "../../lib/cloudinary.img.js";
 import pool from "../../lib/connect.js";
 
 // Create new storage facility for vendor dashboard
 export async function createStorageFacility(
   account_id,
-  storage_image,
-  storage_name,
+  image,
+  listing_name,
   href,
   storage_type,
   location,
@@ -15,6 +14,7 @@ export async function createStorageFacility(
   temperature,
   description,
   features,
+  public_id,
 ) {
   const client = await pool.connect();
   try {
@@ -25,14 +25,14 @@ export async function createStorageFacility(
 
     const result = await client.query(
       `INSERT INTO storage_facility 
-          (account_id, storage_image, storage_name, href, storage_type, location, 
-           capacity, available, price, temperature, description, features) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+          (account_id, image, listing_name, href, storage_type, location,
+           capacity, available, price, temperature, description, features, public_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING *`,
       [
         account_id,
-        storage_image,
-        storage_name,
+        image,
+        listing_name,
         href,
         storage_type,
         location,
@@ -42,17 +42,19 @@ export async function createStorageFacility(
         temperature,
         description,
         featuresArray,
+        public_id,
       ],
     );
 
     if (!result.rows[0]) {
+      await client.query("ROLLBACK");
       return { success: false, error: "Failed to create storage facility" };
     }
 
-    await client.query("COMMIT"); // Commit the transaction
+    await client.query("COMMIT");
     return { success: true, data: result.rows[0] };
   } catch (error) {
-    await client.query("ROLLBACK"); // Rollback on error
+    await client.query("ROLLBACK");
     return {
       success: false,
       error: error.message || "Internal server error. Try again.",
@@ -65,7 +67,7 @@ export async function createStorageFacility(
 // Fetch all storage facility for a vendor dashboard
 export async function fetchListedStorage(account_id) {
   const result = await pool.query(
-    `SELECT sf.id, sf.account_id, sf.storage_image, sf.storage_name, sf.description, sf.status, sf.price, sf.storage_type, sf.features, cu.currency, cu.country_code FROM storage_facility sf JOIN country_utils cu ON sf.account_id = cu.vendor_id WHERE sf.account_id = $1 ORDER BY sf.id DESC`,
+    `SELECT sf.id, sf.account_id, sf.image, sf.listing_name, sf.description, sf.status, sf.price, sf.storage_type, sf.features, cu.currency, cu.country_code FROM storage_facility sf JOIN country_utils cu ON sf.account_id = cu.vendor_id WHERE sf.account_id = $1 ORDER BY sf.id DESC`,
     [account_id],
   );
   return result.rows;
@@ -101,11 +103,11 @@ export const getStorageStats = async (userId) => {
 
 // Get all the quote requests for the vendor's storage facilities
 export async function getQuoteRequests(accountId) {
-  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, sf.storage_name AS listing_name, sf.storage_type FROM quote_requests qr 
+  const quoteRequestsQuery = `SELECT qr.id as quote_request_id, qr.target_id, qr.full_name, qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, sf.listing_name AS listing_name, sf.storage_type FROM quote_requests qr 
     INNER JOIN storage_facility sf ON sf.id = qr.target_id WHERE sf.account_id = $1 ORDER BY qr.created_at DESC LIMIT 5`;
 
   const allQuoteRequestQuery = `SELECT qr.id AS quote_request_id, qr.target_id, qr.full_name,
-      qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, sf.storage_name,
+      qr.phone, qr.metadata, qr.created_at, qr.status, qr.additional_info, sf.listing_name,
        sf.storage_type, sf.location
        FROM quote_requests qr
        INNER JOIN storage_facility sf ON sf.id = qr.target_id
@@ -160,7 +162,7 @@ export async function updateStorage(account_id, storageId, data) {
 
     // First, verify the storage exists and belongs to the account
     const checkQuery =
-      "SELECT id FROM storage_facility WHERE account_id = $1 AND id = $2";
+      "SELECT id, image, public_id FROM storage_facility WHERE account_id = $1 AND id = $2";
     const checkResult = await client.query(checkQuery, [account_id, storageId]);
 
     if (checkResult.rows.length === 0) {
@@ -170,20 +172,23 @@ export async function updateStorage(account_id, storageId, data) {
         "for account:",
         account_id,
       );
+      await client.query("ROLLBACK");
       return { success: false, error: "Storage not found or not authorized" };
     }
 
-    // Ensure features is properly formatted as a PostgreSQL array
-    const features = Array.isArray(data.features)
-      ? data.features
-      : typeof data.features === "string"
-        ? JSON.parse(data.features)
-        : [];
+    const existingImg = checkResult.rows[0].image || [];
+    const existingPublic = checkResult.rows[0].public_id || [];
 
+    // Ensure features is properly formatted as a PostgreSQL array
+    const features = Array.isArray(data.features) ? data.features : [];
+    const newImages = Array.isArray(data.image) ? data.image : [];
+    const newPublicIds = Array.isArray(data.publicId) ? data.publicId : [];
+    const mergedImg = [...existingImg, ...newImages];
+    const mergedPublic = [...existingPublic, ...newPublicIds];
     const updateQuery = `
          UPDATE storage_facility SET 
-            storage_image = COALESCE($1, storage_image), 
-            storage_name = COALESCE($2, storage_name), 
+            image = COALESCE($1, image), 
+            listing_name = COALESCE($2, listing_name), 
             href = COALESCE($3, href), 
             storage_type = COALESCE($4, storage_type), 
             location = COALESCE($5, location), 
@@ -193,14 +198,15 @@ export async function updateStorage(account_id, storageId, data) {
             temperature = COALESCE($9, temperature), 
             description = COALESCE($10, description), 
             features = COALESCE($11, features),
+            public_id = COALESCE($12, public_id),
             updated_at = NOW()
-         WHERE account_id = $12 AND id = $13 
+         WHERE account_id = $13 AND id = $14 
          RETURNING *`;
 
     const result = await client.query(updateQuery, [
-      data.storage_image,
-      data.storage_name,
-      data.storage_name
+      mergedImg,
+      data.listing_name,
+      (data.href || data.listing_name)
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9-]/g, ""),
@@ -212,9 +218,15 @@ export async function updateStorage(account_id, storageId, data) {
       data.temperature,
       data.description,
       features,
+      mergedPublic,
       account_id,
       storageId,
     ]);
+
+    if (!result.rows[0]) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Failed to update storage facility" };
+    }
 
     await client.query("COMMIT");
     return { success: true, data: result.rows[0] };
@@ -239,10 +251,11 @@ export async function deleteStorage(storageId, account_id) {
 
     // First, verify the storage exists and belongs to the account
     const checkQuery =
-      "SELECT id, storage_image FROM storage_facility WHERE account_id = $1 AND id = $2";
+      "SELECT id, public_id FROM storage_facility WHERE account_id = $1 AND id = $2";
     const checkResult = await client.query(checkQuery, [account_id, storageId]);
 
     if (checkResult.rows.length === 0) {
+      await client.query("ROLLBACK");
       return {
         error: "Storage facility not found or you don't have permission",
         success: false,
@@ -250,27 +263,7 @@ export async function deleteStorage(storageId, account_id) {
     }
 
     const storage = checkResult.rows[0];
-    const imageUrl = storage.storage_image;
-
-    if (imageUrl && imageUrl.includes("cloudinary.com")) {
-      try {
-        const deleteResult = await deleteFileFromCloudinary(imageUrl);
-        if (deleteResult.result !== "ok") {
-          await client.query("ROLLBACK");
-          return {
-            error:
-              deleteResult.message || "Failed to delete storage facility image",
-            success: false,
-          };
-        }
-      } catch {
-        await client.query("ROLLBACK");
-        return {
-          error: "Failed to delete storage facility image",
-          success: false,
-        };
-      }
-    }
+    const publicIds = Array.isArray(storage.public_id) ? storage.public_id : [];
 
     const deleteQuery =
       "DELETE FROM storage_facility WHERE account_id = $1 AND id = $2 RETURNING *";
@@ -287,7 +280,11 @@ export async function deleteStorage(storageId, account_id) {
 
     await client.query("COMMIT");
 
-    return { message: "Storage facility deleted successfully", success: true };
+    return {
+      message: "Storage facility deleted successfully",
+      publicIds,
+      success: true,
+    };
   } catch {
     await client.query("ROLLBACK");
     return { error: "Internal server error. Try again.", success: false };

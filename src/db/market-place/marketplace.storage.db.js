@@ -4,7 +4,7 @@ import pool from "../../lib/connect.js";
 export async function getAllListedStorage(country) {
   try {
     const { rows } = await pool.query(
-      `SELECT st.id, st.storage_image, st.storage_name, st.href, st.price, st.description, st.view_count, st.booking_click_count, cu.currency, cu.country_code FROM storage_facility st JOIN country_utils cu ON st.account_id = cu.vendor_id WHERE cu.country_code = $1 ORDER BY id DESC`,
+      `SELECT st.id, st.image, st.listing_name, st.href, st.price, st.description, st.view_count, st.booking_click_count, cu.currency, cu.country_code FROM storage_facility st JOIN country_utils cu ON st.account_id = cu.vendor_id WHERE cu.country_code = $1 ORDER BY id DESC`,
       [country],
     );
     return rows;
@@ -22,7 +22,7 @@ export async function getSingleListedStorageById(id) {
     }
 
     const { rows } = await pool.query(
-      `SELECT sf.id, sf.account_id, sf.storage_image, sf.storage_name, sf.href, sf.description, sf.price, sf.location, sf.storage_type, sf.capacity, sf.available, sf.temperature, sf.features, sf.view_count, sf.booking_click_count,
+      `SELECT sf.id, sf.account_id, sf.image, sf.listing_name, sf.href, sf.description, sf.price, sf.location, sf.storage_type, sf.capacity, sf.available, sf.temperature, sf.features, sf.view_count, sf.booking_click_count,
          v.id AS vendor_id, v.fname, v.lname, v.phone, v.profile_image_url, v.is_verified, cu.currency, cu.country_code 
          FROM storage_facility sf
          LEFT JOIN vendors v ON sf.account_id = v.id

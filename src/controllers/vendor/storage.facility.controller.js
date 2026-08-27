@@ -8,7 +8,10 @@ import {
   updateStorage,
   deleteStorage,
 } from "../../db/vendor/storage.facility.db.js";
-import { saveFileToCloudinary } from "../../lib/cloudinary.img.js";
+import {
+  deleteFileFromCloudinary,
+  saveFileToCloudinary,
+} from "../../lib/cloudinary.img.js";
 import { verifyVendorToken } from "../../sessions/vendor.auth.session.js";
 
 const storage_facilities = {};
@@ -28,9 +31,20 @@ storage_facilities.create = async (req, res) => {
   //       error: "You need to be verified with an active subscription to enjoy this privilege.",
   //    });
   // }
+  let publicId = [];
+  const cleanupUploadedFiles = async () => {
+    if (publicId.length === 0) return;
+
+    try {
+      await deleteFileFromCloudinary(publicId);
+    } catch (cleanupError) {
+      console.error("Failed to clean up storage images:", cleanupError);
+    }
+  };
+
   try {
     let {
-      storage_name,
+      listing_name,
       href,
       storage_type,
       location,
@@ -42,7 +56,6 @@ storage_facilities.create = async (req, res) => {
       features,
     } = req.body;
 
-    // Parse features if it's a JSON string
     if (typeof features === "string") {
       try {
         features = JSON.parse(features);
@@ -60,12 +73,19 @@ storage_facilities.create = async (req, res) => {
       features = [];
     }
 
-    const storage_image = req.file;
+    const image = req.files?.image || [];
+
+    if (image.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "At least one storage image is required",
+      });
+    }
 
     if (
       !payload.id ||
-      !storage_image ||
-      !storage_name ||
+      !image ||
+      !listing_name ||
       !href ||
       !storage_type ||
       !location ||
@@ -82,21 +102,19 @@ storage_facilities.create = async (req, res) => {
         .json({ success: false, error: "Missing required fields" });
     }
 
-    const storage_img = await saveFileToCloudinary(
-      storage_image,
+    const imagesToCloudinary = await saveFileToCloudinary(
+      image,
       "marketplace_storage",
       "image",
     );
-    if (!storage_img) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Could not upload image" });
-    }
+
+    const imageUrl = imagesToCloudinary?.map((image) => image.secure_url);
+    publicId = imagesToCloudinary.map((image) => image.public_id);
 
     const storage = await createStorageFacility(
       payload.id,
-      storage_img,
-      storage_name,
+      imageUrl,
+      listing_name,
       href,
       storage_type,
       location,
@@ -106,8 +124,10 @@ storage_facilities.create = async (req, res) => {
       temperature,
       description,
       features,
+      publicId,
     );
     if (!storage.success) {
+      await cleanupUploadedFiles();
       return res.status(400).json({ success: false, error: storage.error });
     }
     res.status(201).json({
@@ -116,6 +136,7 @@ storage_facilities.create = async (req, res) => {
       message: "Storage facility listed successfully.",
     });
   } catch (error) {
+    await cleanupUploadedFiles();
     res.status(500).json({
       success: false,
       error: error.message || "Failed to add storage facility. Try again",
@@ -263,15 +284,25 @@ storage_facilities.viewItem = async (req, res) => {
 
 // Edit listed storage facility per product id
 storage_facilities.editStorage = async (req, res) => {
-  try {
-    const payload = await verifyVendorToken(req);
-    if (!payload) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
+  const payload = await verifyVendorToken(req);
+  if (!payload) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
 
+  let publicId = [];
+  const cleanupUploadedFiles = async () => {
+    if (publicId.length === 0) return;
+
+    try {
+      await deleteFileFromCloudinary(publicId);
+    } catch (cleanupError) {
+      console.error("Failed to clean up storage images:", cleanupError);
+    }
+  };
+
+  try {
     const {
-      existing_image_url,
-      storage_name,
+      listing_name,
       href,
       storage_type,
       location,
@@ -284,65 +315,60 @@ storage_facilities.editStorage = async (req, res) => {
       storageId,
     } = req.body;
 
-    const storage_image_req = req.file;
-    let storage_image = existing_image_url;
-
-    // Only upload new image to cloud when vendor changes storage image
-    if (storage_image_req && typeof storage_image_req === "object") {
-      try {
-        storage_image = await saveFileToCloudinary(
-          storage_image_req,
-          "marketplace_storage",
-          "image",
-        );
-      } catch (uploadError) {
-        console.error("Error uploading image:", uploadError);
-        return res.status(400).json({
-          success: false,
-          error: "Failed to upload image. Please try again.",
-        });
-      }
-    }
-
-    // Parse features if it's a string
-    let parsedFeatures = [];
+    let parsedFeatures;
     try {
-      parsedFeatures =
-        typeof features === "string" ? JSON.parse(features) : features || [];
-      if (!Array.isArray(parsedFeatures)) {
-        console.warn("Features is not an array, defaulting to empty array");
-        parsedFeatures = [];
+      parsedFeatures = Array.isArray(features)
+        ? features
+        : JSON.parse(features);
+      if (
+        !Array.isArray(parsedFeatures) ||
+        parsedFeatures.some(
+          (feature) => typeof feature !== "string" || !feature.trim(),
+        )
+      ) {
+        throw new Error("Features must be a non-empty array of strings");
       }
-    } catch (e) {
-      console.error("Error parsing features:", e);
-      parsedFeatures = [];
+      parsedFeatures = parsedFeatures.map((feature) => feature.trim());
+    } catch {
+      return res.status(400).json({
+        success: false,
+        error: "Features must be a valid array of strings",
+      });
     }
+
+    const image_req = req.files?.image || [];
+    const saveToCloudinary = image_req.length
+      ? await saveFileToCloudinary(image_req, "marketplace_storage", "image")
+      : [];
+
+    const image = saveToCloudinary.map((img) => img.secure_url);
+    publicId = saveToCloudinary.map((img) => img.public_id);
 
     // Update storage facility in database
     const updated = await updateStorage(payload.id, storageId, {
-      storage_image,
-      storage_name,
-      href: href
+      image,
+      listing_name,
+      href: (href || listing_name)
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9-]/g, ""),
       storage_type,
       location,
-      capacity: Number(capacity),
-      available: Number(available),
+      capacity,
+      available,
       price: Number(price),
       temperature,
       description,
       features: parsedFeatures,
+      publicId,
     });
 
     if (!updated.success) {
       console.error("Update failed - no rows affected");
-      return res.status(404).json({
+      await cleanupUploadedFiles();
+      return res.status(400).json({
         success: false,
-        error:
-          updated.error ||
-          "Storage facility not found or you don't have permission to update it",
+        error: updated.error || "Update failed, please try again later.",
       });
     }
 
@@ -353,6 +379,7 @@ storage_facilities.editStorage = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating storage facility:", error);
+    await cleanupUploadedFiles();
     return res.status(500).json({
       success: false,
       error: "An error occurred while updating the storage facility",
@@ -377,6 +404,17 @@ storage_facilities.deleteStorage = async (req, res) => {
         success: false,
         error: deleteResult.error || "Failed to delete storage facility",
       });
+    }
+
+    if (deleteResult.publicIds.length > 0) {
+      try {
+        await deleteFileFromCloudinary(deleteResult.publicIds);
+      } catch (cleanupError) {
+        console.error(
+          "Storage facility deleted, but image cleanup failed:",
+          cleanupError,
+        );
+      }
     }
 
     return res.status(200).json({

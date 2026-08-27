@@ -42,11 +42,11 @@ export async function deleteFileFromCloudinary(publicId) {
   try {
     let result = null;
     if (Array.isArray(publicId)) {
-      result = publicId.map((public_id) =>
-        cloudinary.uploader.destroy(public_id),
+      result = await Promise.all(
+        publicId.map((public_id) => cloudinary.uploader.destroy(public_id)),
       );
     } else {
-      result = cloudinary.uploader.destroy(publicId);
+      result = await cloudinary.uploader.destroy(publicId);
     }
     return result;
   } catch (error) {

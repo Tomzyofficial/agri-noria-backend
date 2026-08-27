@@ -1,5 +1,5 @@
 import pool from "../../../lib/connect.js";
-// import { assertPlacementTarget } from "../helpers/placementTarget.rules.js";
+import { assertPlacementTarget } from "../helpers/placementTarget.rules.js";
 // import {
 //   verifyProductOwnership,
 //   verifyStorageOwnership,
@@ -29,10 +29,10 @@ export async function verifyAdTarget({
   vendorId,
   targetType,
   targetId,
-  //   placement,
+  surfaces,
 }) {
-  //   const pt = assertPlacementTarget(placement, targetType, vendorId, targetId);
-  //   if (!pt.ok) return { ok: false, message: pt.message };
+  const pt = assertPlacementTarget(surfaces, targetType);
+  if (!pt.ok) return { ok: false, message: pt.message };
 
   if (targetType === "Product") {
     const ok = await verifyOwnership.product(vendorId, targetId);
@@ -78,7 +78,7 @@ export async function createCampaignWithCheckout(input) {
     vendorId: input.vendorId,
     targetType: input.targetType,
     targetId: input.targetId,
-    //   placement: input.placement,
+    surfaces: input.surfaces,
   });
   if (!own.ok) {
     const err = new Error(own.message);
