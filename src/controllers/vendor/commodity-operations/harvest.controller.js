@@ -37,9 +37,10 @@ export const getProvidersByRole = async (req, res) => {
 };
 import crypto from "crypto";
 
-// Create a new harvest batch
+// Create a new harvest batch (individual or cluster aggregation)
 export const declareHarvest = async (req, res) => {
   let produces = req.body.produces;
+  const { cluster_id, source_type = 'individual', farmer_count = 1 } = req.body;
   
   // Fallback for single crop submission
   if (!produces) {
@@ -56,6 +57,12 @@ export const declareHarvest = async (req, res) => {
 
   const client = await pool.connect();
   try {
+    await client.query(`
+      ALTER TABLE harvest_batches ADD COLUMN IF NOT EXISTS cluster_id UUID REFERENCES clusters(id);
+      ALTER TABLE harvest_batches ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) DEFAULT 'individual';
+      ALTER TABLE harvest_batches ADD COLUMN IF NOT EXISTS farmer_count INT DEFAULT 1;
+    `);
+
     await client.query('BEGIN');
     
     for (const item of produces) {
@@ -64,12 +71,22 @@ export const declareHarvest = async (req, res) => {
       
       const query = `
         INSERT INTO harvest_batches (
-          batch_number, vendor_id, crop, quantity_mt, location, harvest_date, status
+          batch_number, vendor_id, crop, quantity_mt, location, harvest_date, status, cluster_id, source_type, farmer_count
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, 'harvest_declared'
+          $1, $2, $3, $4, $5, $6, 'harvest_declared', $7, $8, $9
         ) RETURNING *
       `;
-      const values = [batch_number, vendor_id, crop, quantity_mt, location || 'Unknown', harvest_date || new Date()];
+      const values = [
+        batch_number, 
+        vendor_id, 
+        crop, 
+        quantity_mt, 
+        location || 'Unknown', 
+        harvest_date || new Date(),
+        cluster_id || null,
+        source_type || 'individual',
+        parseInt(farmer_count) || 1
+      ];
       const result = await client.query(query, values);
       
       const newBatch = result.rows[0];
@@ -78,6 +95,7 @@ export const declareHarvest = async (req, res) => {
       const walletQuery = `
         INSERT INTO commodity_operations_wallets (batch_id, balance)
         VALUES ($1, 0)
+        ON CONFLICT (batch_id) DO NOTHING
         RETURNING *
       `;
       await client.query(walletQuery, [newBatch.batch_id]);
@@ -96,16 +114,28 @@ export const declareHarvest = async (req, res) => {
   }
 };
 
-// Fetch batches for the farmer
+// Fetch batches for the farmer / aggregator
 export const getMyBatches = async (req, res) => {
   const vendor_id = req.user.id;
 
   try {
+    await pool.query(`
+      ALTER TABLE harvest_batches ADD COLUMN IF NOT EXISTS cluster_id UUID REFERENCES clusters(id);
+      ALTER TABLE harvest_batches ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) DEFAULT 'individual';
+      ALTER TABLE harvest_batches ADD COLUMN IF NOT EXISTS farmer_count INT DEFAULT 1;
+    `);
+
     const query = `
-      SELECT hb.*, cow.balance as wallet_balance, ip.status as insurance_status, ip.policy_id
+      SELECT 
+        hb.*, 
+        cow.balance as wallet_balance, 
+        ip.status as insurance_status, 
+        ip.policy_id,
+        c.name as cluster_name
       FROM harvest_batches hb
       LEFT JOIN commodity_operations_wallets cow ON hb.batch_id = cow.batch_id
       LEFT JOIN insurance_policies ip ON hb.batch_id = ip.batch_id
+      LEFT JOIN clusters c ON hb.cluster_id = c.id
       WHERE hb.vendor_id = $1
       ORDER BY hb.created_at DESC
     `;

@@ -1,4 +1,6 @@
 import pool from "../../lib/connect.js";
+import bcrypt from "bcryptjs";
+import emailService from "../../services/email/email.service.js";
 
 // Get all vendors (users) for super admin
 async function getAllUsers() {
@@ -347,36 +349,130 @@ async function updateSystemSettings(settings) {
 }
 
 // Ensure research tables exist
+// Ensure research and organization tables exist
 async function ensureResearchTables() {
    try {
       await pool.query(`
-         CREATE TABLE IF NOT EXISTS trial_plots (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-            plot_name TEXT NOT NULL,
-            location TEXT NOT NULL,
-            crop TEXT NOT NULL,
-            size_hectares NUMERIC(10,2),
-            status TEXT DEFAULT 'active',
-            start_date DATE,
-            end_date DATE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+         -- 1. Ensure clusters columns exist
+         DO $$ 
+         BEGIN
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'clusters' AND column_name = 'group_type') THEN
+                 ALTER TABLE clusters ADD COLUMN group_type VARCHAR(50) DEFAULT 'SUPPLY_CLUSTER';
+             END IF;
+
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'clusters' AND column_name = 'owner_id') THEN
+                 ALTER TABLE clusters ADD COLUMN owner_id UUID REFERENCES vendors(id) ON DELETE SET NULL;
+             END IF;
+
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'clusters' AND column_name = 'project_id') THEN
+                 ALTER TABLE clusters ADD COLUMN project_id UUID;
+             END IF;
+
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'clusters' AND column_name = 'metadata') THEN
+                 ALTER TABLE clusters ADD COLUMN metadata JSONB DEFAULT '{}'::jsonb;
+             END IF;
+
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cluster_members' AND column_name = 'cohort_label') THEN
+                 ALTER TABLE cluster_members ADD COLUMN cohort_label VARCHAR(100);
+             END IF;
+
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cluster_members' AND column_name = 'consent_granted') THEN
+                 ALTER TABLE cluster_members ADD COLUMN consent_granted BOOLEAN DEFAULT true;
+             END IF;
+         END $$;
+
+         -- 2. Organization Memberships
+         CREATE TABLE IF NOT EXISTS farmer_organization_memberships (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             organization_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+             farmer_id UUID NOT NULL REFERENCES farmer_profiles(id) ON DELETE CASCADE,
+             membership_number VARCHAR(100),
+             verification_status VARCHAR(50) DEFAULT 'verified',
+             joined_date DATE DEFAULT CURRENT_DATE,
+             created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+             updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+             UNIQUE(organization_id, farmer_id)
          );
+
+         -- 3. Producer Association Affiliations (Association -> Cooperative)
+         CREATE TABLE IF NOT EXISTS organization_affiliations (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             parent_org_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+             member_org_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+             status VARCHAR(50) DEFAULT 'active',
+             affiliation_date DATE DEFAULT CURRENT_DATE,
+             notes TEXT,
+             created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+             updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+             UNIQUE(parent_org_id, member_org_id)
+         );
+
+         -- 4. Research Projects
+         CREATE TABLE IF NOT EXISTS research_projects (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             institution_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+             title VARCHAR(255) NOT NULL,
+             objectives TEXT,
+             commodity VARCHAR(100) NOT NULL,
+             region VARCHAR(255),
+             principal_investigator VARCHAR(255),
+             team_members TEXT[],
+             sample_size INT DEFAULT 50,
+             start_date DATE,
+             end_date DATE,
+             status VARCHAR(50) DEFAULT 'active',
+             funding_requested DECIMAL(15,2) DEFAULT 0.00,
+             funding_status VARCHAR(50) DEFAULT 'none',
+             funding_funder_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+             funding_notes TEXT,
+             created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+             updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+         );
+
+         -- 5. Research Trial Plots
+         CREATE TABLE IF NOT EXISTS trial_plots (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+             plot_name TEXT NOT NULL,
+             location TEXT NOT NULL,
+             crop TEXT NOT NULL,
+             size_hectares NUMERIC(10,2),
+             status TEXT DEFAULT 'active',
+             start_date DATE,
+             end_date DATE,
+             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+         );
+
+         -- 6. Research Observations
+         CREATE TABLE IF NOT EXISTS research_observations (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             project_id UUID NOT NULL REFERENCES research_projects(id) ON DELETE CASCADE,
+             cohort_id UUID REFERENCES clusters(id) ON DELETE SET NULL,
+             farmer_id UUID REFERENCES farmer_profiles(id) ON DELETE SET NULL,
+             trial_plot_id UUID REFERENCES trial_plots(id) ON DELETE SET NULL,
+             observation_type VARCHAR(100) NOT NULL,
+             metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+             notes TEXT,
+             recorded_by UUID REFERENCES vendors(id) ON DELETE SET NULL,
+             recorded_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+         );
+
+         -- 7. Research Advisories
          CREATE TABLE IF NOT EXISTS research_advisories (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-            title TEXT NOT NULL,
-            category TEXT,
-            severity TEXT DEFAULT 'warning',
-            message TEXT,
-            status TEXT DEFAULT 'active',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+             title TEXT NOT NULL,
+             category TEXT,
+             severity TEXT DEFAULT 'warning',
+             message TEXT,
+             status TEXT DEFAULT 'active',
+             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
          );
       `);
    } catch (err) {
-      console.error("Error ensuring research tables:", err);
+      console.error("Error ensuring research and organization tables:", err);
    }
 }
 
@@ -738,9 +834,37 @@ async function getInstitutionProcurement(institutionId, role) {
 }
 
 async function getInstitutionTraceability(institutionId, role) {
-   const filter = role === 'government' ? "" : `WHERE institution_id = '${institutionId}'`;
-   const { rows } = await pool.query(`SELECT * FROM traceability_logs ${filter} ORDER BY timestamp DESC`);
-   return rows;
+   const isGov = ['government', 'admin', 'super admin'].includes(role?.toLowerCase());
+   
+   let query = `
+      SELECT DISTINCT ON (hb.batch_id)
+         hb.batch_id::text as id,
+         hb.batch_number,
+         COALESCE(hb.location, 'Farm Gate') as origin,
+         COALESCE(lt.destination, 'Designated Warehouse') as destination,
+         COALESCE(lt.status, hb.status, 'harvest_declared') as status,
+         COALESCE(lt.created_at, hb.updated_at, hb.created_at) as timestamp,
+         hb.crop,
+         hb.quantity_mt
+      FROM harvest_batches hb
+      LEFT JOIN logistics_tickets lt ON hb.batch_id = lt.batch_id
+      ORDER BY hb.batch_id, lt.created_at DESC NULLS LAST
+   `;
+
+   try {
+      const { rows } = await pool.query(query);
+      // Sort by timestamp descending after dedup
+      rows.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      return rows;
+   } catch {
+      try {
+         const filter = isGov ? "" : `WHERE institution_id = '${institutionId}'`;
+         const { rows } = await pool.query(`SELECT * FROM traceability_logs ${filter} ORDER BY timestamp DESC`);
+         return rows;
+      } catch {
+         return [];
+      }
+   }
 }
 
 async function getInstitutionReports(institutionId, role) {
@@ -779,6 +903,406 @@ async function createInstitutionTrialPlot(vendorId, plotData) {
    return rows[0];
 }
 
+// ----------------------------------------------------
+// Organization & Master Farmer Identity DB Functions
+// ----------------------------------------------------
+
+async function getOrganizationMembers(orgId, role) {
+   await ensureResearchTables();
+   const isGov = ["government", "admin", "super admin", "finance"].includes(role?.toLowerCase());
+   
+   let query = `
+      SELECT 
+         fp.id as farmer_profile_id,
+         fp.id as id,
+         v.id as vendor_id,
+         v.fname,
+         v.lname,
+         v.email,
+         v.phone,
+         COALESCE(v.profile_image_url, '') as avatar_url,
+         v.is_verified,
+         fp.commodity,
+         fp.farm_size_hectares,
+         fp.years_of_experience,
+         fp.experience_level,
+         fp.cooperative_name,
+         fp.association,
+         fom.membership_number,
+         fom.verification_status as member_status,
+         fom.joined_date,
+         p.name as program_name,
+         (SELECT c.name FROM cluster_members cm JOIN clusters c ON cm.cluster_id = c.id WHERE cm.farmer_id = fp.id LIMIT 1) as cluster_name
+      FROM farmer_profiles fp
+      JOIN vendors v ON fp.vendor_id = v.id
+      LEFT JOIN farmer_organization_memberships fom ON fp.id = fom.farmer_id AND fom.organization_id = $1
+      LEFT JOIN programs p ON fp.program_id = p.id
+   `;
+
+   let params = [orgId];
+
+   if (!isGov) {
+      // Organization sees direct members OR farmers who listed this org in their KYC
+      query += `
+         WHERE fom.id IS NOT NULL 
+            OR fp.cooperative_name IN (SELECT company_name FROM vendors WHERE id = $1)
+            OR fp.association IN (SELECT company_name FROM vendors WHERE id = $1)
+      `;
+   } else {
+      query += ` WHERE LOWER(v.workspace) = 'ecosystem'`;
+   }
+
+   query += ` ORDER BY v.created_at DESC`;
+   const { rows } = await pool.query(query, params);
+   return rows;
+}
+
+async function importOrLinkFarmerToOrg(orgId, farmerData) {
+   await ensureResearchTables();
+   const { fname, lname, phone, email, nin, commodity, farm_size_hectares, membership_number } = farmerData;
+
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+
+      // 1. Check if master farmer identity already exists
+      let vendorId = null;
+      let farmerProfileId = null;
+      let isNewFarmer = false;
+      let plainPassword = null;
+
+      if (phone || email) {
+         const { rows: existingV } = await client.query(
+            `SELECT id, email, fname, lname FROM vendors WHERE (phone IS NOT NULL AND phone = $1) OR (email IS NOT NULL AND LOWER(email) = LOWER($2)) LIMIT 1`,
+            [phone || null, email || null]
+         );
+         if (existingV.length > 0) vendorId = existingV[0].id;
+      }
+
+      if (vendorId) {
+         const { rows: existingFP } = await client.query(
+            `SELECT id FROM farmer_profiles WHERE vendor_id = $1 LIMIT 1`,
+            [vendorId]
+         );
+         if (existingFP.length > 0) {
+            farmerProfileId = existingFP[0].id;
+         } else {
+            // Vendor exists but has no farmer profile yet - create it
+            const { rows: newFP } = await client.query(
+               `INSERT INTO farmer_profiles (vendor_id, commodity, farm_size_hectares, nin, onboarding_status)
+                VALUES ($1, $2, $3, $4, 'completed') RETURNING id`,
+               [vendorId, commodity || 'Cassava', parseFloat(farm_size_hectares) || 2.0, nin || null]
+            );
+            farmerProfileId = newFP[0].id;
+         }
+      }
+
+      // 2. If farmer does not exist, create the master identity
+      let finalEmail = email;
+      if (!vendorId) {
+         isNewFarmer = true;
+         plainPassword = `Agri@${Math.floor(100000 + Math.random() * 900000)}`;
+         const hashedPassword = await bcrypt.hash(plainPassword, 10);
+         finalEmail = email || `farmer_${phone ? phone.replace(/[^0-9]/g, '') : Date.now()}_${Math.floor(Math.random() * 1000)}@agrinoria.eco`;
+
+         const { rows: newV } = await client.query(
+            `INSERT INTO vendors (fname, lname, email, phone, pword, terms_of_service, role, workspace, is_active, is_verified, approval_status, onboarding_status, onboarding_level)
+             VALUES ($1, $2, $3, $4, $5, true, 'farmer', 'ecosystem', true, false, 'approved', 'pending', 1) RETURNING id`,
+            [fname || 'Farmer', lname || '', finalEmail, phone || null, hashedPassword]
+         );
+         vendorId = newV[0].id;
+
+         const { rows: newFP } = await client.query(
+            `INSERT INTO farmer_profiles (vendor_id, commodity, farm_size_hectares, nin, onboarding_status)
+             VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
+            [vendorId, commodity || 'Cassava', parseFloat(farm_size_hectares) || 2.0, nin || null]
+         );
+         farmerProfileId = newFP[0].id;
+      }
+
+      // 3. Link to Organization without duplicate farmer record
+      await client.query(
+         `INSERT INTO farmer_organization_memberships (organization_id, farmer_id, membership_number, verification_status)
+          VALUES ($1, $2, $3, 'verified')
+          ON CONFLICT (organization_id, farmer_id) 
+          DO UPDATE SET membership_number = EXCLUDED.membership_number, verification_status = 'verified', updated_at = now()`,
+         [orgId, farmerProfileId, membership_number || null]
+      );
+
+      await client.query("COMMIT");
+
+      // 4. Send email notification asynchronously if new farmer and has valid external email
+      if (isNewFarmer && email && !email.endsWith("@agrinoria.eco") && !email.includes("example.com")) {
+         try {
+            const { rows: orgRows } = await pool.query(
+               `SELECT company_name, fname, lname, role FROM vendors WHERE id = $1`,
+               [orgId]
+            );
+            const orgName = orgRows[0]?.company_name || `${orgRows[0]?.fname || ''} ${orgRows[0]?.lname || ''}`.trim() || 'Organization';
+            const orgRole = orgRows[0]?.role || '';
+
+            await emailService.sendFarmerCredentialsEmail({
+               email,
+               name: `${fname || 'Farmer'} ${lname || ''}`.trim(),
+               phone: phone || null,
+               tempPassword: plainPassword,
+               organizationName: orgName,
+               organizationRole: orgRole
+            });
+         } catch (emailErr) {
+            console.warn("Could not send credentials email to farmer:", emailErr.message);
+         }
+      }
+
+      return {
+         success: true,
+         isNewFarmer,
+         farmerId: farmerProfileId,
+         vendorId: vendorId,
+         name: `${fname || 'Farmer'} ${lname || ''}`.trim(),
+         email: finalEmail,
+         phone: phone || null,
+         tempPassword: isNewFarmer ? plainPassword : null,
+         message: isNewFarmer 
+            ? "New Master Farmer registered with temporary credentials and linked to your organization!"
+            : "Existing Agri-Noria Farmer identified and linked to your organization!"
+      };
+   } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+   } finally {
+      client.release();
+   }
+}
+
+// ----------------------------------------------------
+// Polymorphic Groups DB Functions
+// ----------------------------------------------------
+
+async function getOrganizationGroups(ownerId, groupType, role) {
+   await ensureResearchTables();
+   const isGov = ["government", "admin", "super admin"].includes(role?.toLowerCase());
+
+   let query = `
+      SELECT 
+         c.id,
+         c.name,
+         c.region,
+         c.total_hectares,
+         c.group_type,
+         c.owner_id,
+         c.supervisor_id,
+         c.program_id,
+         c.project_id,
+         c.metadata,
+         c.status,
+         c.created_at,
+         p.name as program_name,
+         rp.title as project_title,
+         (SELECT COUNT(*) FROM cluster_members cm WHERE cm.cluster_id = c.id) as member_count,
+         COALESCE((SELECT SUM(fp.farm_size_hectares) FROM farmer_profiles fp JOIN cluster_members cm ON fp.id = cm.farmer_id WHERE cm.cluster_id = c.id), c.total_hectares, 0) as calculated_hectares,
+         (SELECT w.balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_balance,
+         EXISTS(SELECT 1 FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved')) as has_pending_request
+      FROM clusters c
+      LEFT JOIN programs p ON c.program_id = p.id
+      LEFT JOIN research_projects rp ON c.project_id = rp.id
+      WHERE (c.group_type = $1 OR ($1 IS NULL AND c.group_type IS NOT NULL))
+   `;
+
+   let params = [groupType];
+
+   if (!isGov && ownerId) {
+      query += ` AND (c.owner_id = $2 OR c.supervisor_id = $2)`;
+      params.push(ownerId);
+   }
+
+   query += ` ORDER BY c.created_at DESC`;
+   const { rows } = await pool.query(query, params);
+   return rows;
+}
+
+async function createOrganizationGroup(ownerId, groupData) {
+   await ensureResearchTables();
+   const { name, group_type, program_id, project_id, region, total_hectares, metadata } = groupData;
+
+   const { rows } = await pool.query(
+      `INSERT INTO clusters (name, group_type, owner_id, supervisor_id, program_id, project_id, region, total_hectares, metadata, status)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'active')
+       RETURNING *`,
+      [
+         name, 
+         group_type || 'MEMBER_CLUSTER', 
+         ownerId, 
+         program_id || null, 
+         project_id || null, 
+         region || 'Regional', 
+         parseFloat(total_hectares) || 0,
+         metadata || {}
+      ]
+   );
+   return rows[0];
+}
+
+async function assignFarmerToGroup(groupId, farmerId, role = 'member', cohortLabel = null) {
+   await ensureResearchTables();
+   // farmer_id in cluster_members references farmer_profiles(id)
+   // Resolve vendor_id to farmer_profile id if needed
+   let profileId = farmerId;
+   const { rows: profileRows } = await pool.query(
+      `SELECT id FROM farmer_profiles WHERE id = $1 OR vendor_id = $1 LIMIT 1`,
+      [farmerId]
+   );
+   if (profileRows.length > 0) {
+      profileId = profileRows[0].id;
+   }
+
+   const { rows } = await pool.query(
+      `INSERT INTO cluster_members (cluster_id, farmer_id, role, cohort_label, consent_granted)
+       VALUES ($1, $2, $3, $4, true)
+       ON CONFLICT (cluster_id, farmer_id) 
+       DO UPDATE SET cohort_label = EXCLUDED.cohort_label, role = EXCLUDED.role
+       RETURNING *`,
+      [groupId, profileId, role, cohortLabel]
+   );
+   return rows[0];
+}
+
+// ----------------------------------------------------
+// Producer Association Network Affiliations
+// ----------------------------------------------------
+
+async function getAffiliatedCooperatives(associationId) {
+   await ensureResearchTables();
+   const { rows } = await pool.query(
+      `SELECT 
+         v.id as cooperative_id,
+         v.fname,
+         v.lname,
+         v.email,
+         v.phone,
+         v.company_name,
+         oa.status as affiliation_status,
+         oa.affiliation_date,
+         (SELECT COUNT(*) FROM farmer_organization_memberships fom WHERE fom.organization_id = v.id) as member_count,
+         (SELECT COUNT(*) FROM clusters c WHERE c.owner_id = v.id AND c.group_type = 'MEMBER_CLUSTER') as cluster_count
+       FROM vendors v
+       LEFT JOIN organization_affiliations oa ON v.id = oa.member_org_id AND oa.parent_org_id = $1
+       WHERE LOWER(v.role) LIKE '%coop%'
+       ORDER BY oa.status ASC NULLS LAST, v.created_at DESC`,
+      [associationId]
+   );
+   return rows;
+}
+
+async function affiliateCooperative(associationId, coopId, status = 'active') {
+   await ensureResearchTables();
+   const { rows } = await pool.query(
+      `INSERT INTO organization_affiliations (parent_org_id, member_org_id, status)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (parent_org_id, member_org_id)
+       DO UPDATE SET status = EXCLUDED.status, updated_at = now()
+       RETURNING *`,
+      [associationId, coopId, status]
+   );
+   return rows[0];
+}
+
+// ----------------------------------------------------
+// Research Projects & Cohorts DB Functions
+// ----------------------------------------------------
+
+async function getResearchProjects(institutionId, role) {
+   await ensureResearchTables();
+   const isGov = ["government", "admin", "super admin"].includes(role?.toLowerCase());
+   const filter = isGov ? "" : `WHERE rp.institution_id = '${institutionId}'`;
+
+   const { rows } = await pool.query(`
+      SELECT 
+         rp.*,
+         v.company_name as institution_name,
+         (SELECT COUNT(*) FROM clusters c WHERE c.project_id = rp.id AND c.group_type = 'RESEARCH_COHORT') as cohort_count,
+         (SELECT COUNT(DISTINCT cm.farmer_id) FROM clusters c JOIN cluster_members cm ON c.id = cm.cluster_id WHERE c.project_id = rp.id) as participant_count,
+         (SELECT COUNT(*) FROM research_observations ro WHERE ro.project_id = rp.id) as observations_count
+      FROM research_projects rp
+      LEFT JOIN vendors v ON rp.institution_id = v.id
+      ${filter}
+      ORDER BY rp.created_at DESC
+   `);
+   return rows;
+}
+
+async function createResearchProject(institutionId, projectData) {
+   await ensureResearchTables();
+   const { title, objectives, commodity, region, principal_investigator, team_members, sample_size, start_date, end_date } = projectData;
+
+   const { rows } = await pool.query(
+      `INSERT INTO research_projects (institution_id, title, objectives, commodity, region, principal_investigator, team_members, sample_size, start_date, end_date, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+       RETURNING *`,
+      [
+         institutionId, title, objectives || '', commodity, region || 'National',
+         principal_investigator || 'Principal Investigator',
+         team_members || [],
+         parseInt(sample_size) || 50,
+         start_date || null, end_date || null
+      ]
+   );
+   return rows[0];
+}
+
+async function requestResearchProjectFunding(institutionId, projectId, amount, notes) {
+   await ensureResearchTables();
+   const { rows } = await pool.query(
+      `UPDATE research_projects 
+       SET funding_requested = $1, funding_status = 'requested', funding_notes = $2, updated_at = now()
+       WHERE id = $3 AND institution_id = $4
+       RETURNING *`,
+      [parseFloat(amount) || 0, notes || 'Grant Funding Request', projectId, institutionId]
+   );
+   return rows[0];
+}
+
+async function getResearchObservations(projectId) {
+   await ensureResearchTables();
+   const { rows } = await pool.query(
+      `SELECT 
+         ro.*,
+         c.name as cohort_name,
+         v.fname as farmer_fname,
+         v.lname as farmer_lname,
+         tp.plot_name
+       FROM research_observations ro
+       LEFT JOIN clusters c ON ro.cohort_id = c.id
+       LEFT JOIN farmer_profiles fp ON ro.farmer_id = fp.id
+       LEFT JOIN vendors v ON fp.vendor_id = v.id
+       LEFT JOIN trial_plots tp ON ro.trial_plot_id = tp.id
+       WHERE ro.project_id = $1
+       ORDER BY ro.recorded_at DESC`,
+      [projectId]
+   );
+   return rows;
+}
+
+async function logResearchObservation(recordedById, data) {
+   await ensureResearchTables();
+   const { project_id, cohort_id, farmer_id, trial_plot_id, observation_type, metrics, notes } = data;
+
+   const { rows } = await pool.query(
+      `INSERT INTO research_observations (project_id, cohort_id, farmer_id, trial_plot_id, observation_type, metrics, notes, recorded_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+         project_id, cohort_id || null, farmer_id || null, trial_plot_id || null,
+         observation_type || 'Trial Observation',
+         metrics || {},
+         notes || '',
+         recordedById
+      ]
+   );
+   return rows[0];
+}
+
+
 export {
    getAllUsers,
    getUserCountByRole,
@@ -814,5 +1338,17 @@ export {
    getInstitutionNgoDistribution,
    getInstitutionTrialPlots,
    createInstitutionTrialPlot,
+   getOrganizationMembers,
+   importOrLinkFarmerToOrg,
+   getOrganizationGroups,
+   createOrganizationGroup,
+   assignFarmerToGroup,
+   getAffiliatedCooperatives,
+   affiliateCooperative,
+   getResearchProjects,
+   createResearchProject,
+   requestResearchProjectFunding,
+   getResearchObservations,
+   logResearchObservation,
 };
 

@@ -259,7 +259,22 @@ async function getFarmerProfileByVendor(vendorId) {
               f.farm_entrance_photo_url,
               f.farm_interior_photo_url,
               f.crop_photo_url,
-              v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, p.commodity as program_commodity, p.target_hectares as program_target_hectares, cm.cluster_id
+              v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, p.commodity as program_commodity, p.target_hectares as program_target_hectares, cm.cluster_id,
+              (
+                 SELECT json_build_object(
+                    'id', v_org.id,
+                    'name', COALESCE(v_org.company_name, v_org.fname || ' ' || v_org.lname),
+                    'company_name', v_org.company_name,
+                    'role', v_org.role,
+                    'membership_number', fom.membership_number,
+                    'verification_status', fom.verification_status
+                 )
+                 FROM farmer_organization_memberships fom
+                 JOIN vendors v_org ON fom.organization_id = v_org.id
+                 WHERE fom.farmer_id = fp.id
+                 ORDER BY fom.created_at DESC
+                 LIMIT 1
+              ) as organization
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN farms f ON f.vendor_id = v.id
@@ -334,7 +349,7 @@ async function getNearestClusters(lat, lng, limit = 5) {
 
 async function getAllClusters() {
    const { rows } = await pool.query(
-      `SELECT c.*, v.fname || ' ' || v.lname as supervisor_name, p.name as program_name,
+      `SELECT c.*, v.fname || ' ' || v.lname as supervisor_name, p.name as program_name, p.created_by as program_created_by, rp.institution_id as project_institution_id,
        (SELECT COUNT(*) FROM cluster_members cm WHERE cm.cluster_id = c.id) as farmer_count,
        COALESCE((SELECT SUM(fp.farm_size_hectares) FROM farmer_profiles fp JOIN cluster_members cm ON fp.id = cm.farmer_id WHERE cm.cluster_id = c.id), 0) as total_hectares,
        EXISTS(SELECT 1 FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved')) as has_pending_request,
@@ -349,6 +364,7 @@ async function getAllClusters() {
        FROM clusters c
        LEFT JOIN vendors v ON c.supervisor_id = v.id
        LEFT JOIN programs p ON c.program_id = p.id
+       LEFT JOIN research_projects rp ON c.project_id = rp.id
        ORDER BY c.created_at DESC`
    );
    return rows;
@@ -635,30 +651,94 @@ async function getInputRequestsByFarmer(farmerId) {
 }
 
 async function approveInputFunds(requestId, approvedBy) {
-   const { rows } = await pool.query(
-      `UPDATE input_requests SET funds_status = 'approved', approved_by = $2, approved_at = now()
-       WHERE id = $1 RETURNING *`,
-      [requestId, approvedBy]
-   );
-   return rows[0];
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+         `UPDATE input_requests 
+          SET funds_status = 'approved', 
+              approved_by = COALESCE($2, approved_by), 
+              approved_at = now(),
+              status = CASE WHEN items_status = 'approved' THEN 'approved' ELSE status END
+          WHERE id = $1 
+          RETURNING *`,
+         [requestId, approvedBy]
+      );
+      const updated = rows[0];
+
+      if (updated && updated.status === 'approved' && updated.farmer_id) {
+         await client.query(`
+            INSERT INTO repayments (farmer_id, input_request_id, financing_amount, recovered_amount, balance, status)
+            VALUES ($1, $2, $3, 0, $3, 'pending')
+            ON CONFLICT DO NOTHING
+         `, [updated.farmer_id, updated.id, updated.total_value || 0]);
+
+         await client.query(`
+            INSERT INTO input_distributions (request_id, farmer_id, package_id, delivery_status)
+            VALUES ($1, $2, $3, 'assigned')
+            ON CONFLICT DO NOTHING
+         `, [updated.id, updated.farmer_id, updated.package_id]);
+      }
+
+      await client.query("COMMIT");
+      return updated;
+   } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+   } finally {
+      client.release();
+   }
 }
 
 async function submitInputItems(requestId, items) {
    const { rows } = await pool.query(
       `UPDATE input_requests SET input_items = $2, items_status = 'pending'
-       WHERE id = $1 AND funds_status = 'approved' RETURNING *`,
+       WHERE id = $1 RETURNING *`,
       [requestId, JSON.stringify(items)]
    );
    return rows[0];
 }
 
 async function approveInputItems(requestId, approvedBy, distributorId) {
-   const { rows } = await pool.query(
-      `UPDATE input_requests SET items_status = 'approved', status = 'approved', distributor_id = $3, approved_by = $2, approved_at = now()
-       WHERE id = $1 AND funds_status = 'approved' RETURNING *`,
-      [requestId, approvedBy, distributorId]
-   );
-   return rows[0];
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+         `UPDATE input_requests 
+          SET items_status = 'approved', 
+              distributor_id = COALESCE($3, distributor_id), 
+              approved_by = COALESCE($2, approved_by), 
+              approved_at = now(),
+              cluster_approved = true,
+              status = CASE WHEN funds_status = 'approved' THEN 'approved' ELSE status END
+          WHERE id = $1 
+          RETURNING *`,
+         [requestId, approvedBy, distributorId || null]
+      );
+      const updated = rows[0];
+
+      if (updated && updated.status === 'approved' && updated.farmer_id) {
+         await client.query(`
+            INSERT INTO repayments (farmer_id, input_request_id, financing_amount, recovered_amount, balance, status)
+            VALUES ($1, $2, $3, 0, $3, 'pending')
+            ON CONFLICT DO NOTHING
+         `, [updated.farmer_id, updated.id, updated.total_value || 0]);
+
+         await client.query(`
+            INSERT INTO input_distributions (request_id, farmer_id, package_id, delivery_status)
+            VALUES ($1, $2, $3, 'assigned')
+            ON CONFLICT DO NOTHING
+         `, [updated.id, updated.farmer_id, updated.package_id]);
+      }
+
+      await client.query("COMMIT");
+      return updated;
+   } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+   } finally {
+      client.release();
+   }
 }
 
 async function getInputRequestsByDistributor(distributorId) {
@@ -702,12 +782,31 @@ async function confirmInputDelivery(requestId, userId) {
       if (!request) throw new Error("Input request not found");
       if (request.items_status === 'confirmed_delivered') throw new Error("Input request delivery already confirmed");
 
-      // Mark as confirmed_delivered
+      // Mark as confirmed_delivered and distributed
       const updateRes = await client.query(
-         "UPDATE input_requests SET items_status = 'confirmed_delivered' WHERE id = $1 RETURNING *",
+         `UPDATE input_requests 
+          SET items_status = 'confirmed_delivered', status = 'distributed' 
+          WHERE id = $1 
+          RETURNING *`,
          [requestId]
       );
 
+      // Update distribution record
+      await client.query(
+         `UPDATE input_distributions 
+          SET delivery_status = 'delivered', delivered_at = now() 
+          WHERE request_id = $1`,
+         [requestId]
+      );
+
+      // Ensure repayment obligation exists
+      if (request.farmer_id) {
+         await client.query(`
+            INSERT INTO repayments (farmer_id, input_request_id, financing_amount, recovered_amount, balance, status)
+            VALUES ($1, $2, $3, 0, $3, 'pending')
+            ON CONFLICT DO NOTHING
+         `, [request.farmer_id, request.id, request.total_value || 0]);
+      }
 
       await client.query("COMMIT");
       return updateRes.rows[0];
@@ -1910,6 +2009,259 @@ async function getEcosystemTreasuryTransactions() {
    }
 }
 
+// ============ REPAYMENTS & SETTLEMENT WATERFALL ============
+
+async function getRepaymentsByFarmer(farmerVendorId) {
+   const { rows } = await pool.query(`
+      SELECT 
+         r.*,
+         ir.input_items,
+         ir.total_value as request_total_value,
+         p.name as program_name
+      FROM repayments r
+      LEFT JOIN input_requests ir ON r.input_request_id = ir.id
+      LEFT JOIN farmer_profiles fp ON r.farmer_id = fp.id
+      LEFT JOIN programs p ON fp.program_id = p.id
+      WHERE r.farmer_id = $1 
+         OR fp.vendor_id = $1 
+         OR r.farmer_id IN (SELECT id FROM farmer_profiles WHERE vendor_id = $1)
+      ORDER BY r.created_at DESC
+   `, [farmerVendorId]);
+   return rows;
+}
+
+async function calculateWaterfallBreakdown(batchId, buyerPayment) {
+   await pool.query(`
+      ALTER TABLE settlements ADD COLUMN IF NOT EXISTS loan_deduction NUMERIC(15,2) DEFAULT 0;
+   `);
+
+   // 1. Fetch harvest batch
+   const batchRes = await pool.query(`
+      SELECT * FROM harvest_batches WHERE batch_id = $1
+   `, [batchId]);
+
+   if (batchRes.rows.length === 0) {
+      throw new Error("Harvest batch not found");
+   }
+   const batch = batchRes.rows[0];
+   const farmerVendorId = batch.vendor_id;
+   const payment = parseFloat(buyerPayment) || 0;
+
+   // 2. Fetch outstanding repayment debt for farmer
+   const debtRes = await pool.query(`
+      SELECT COALESCE(SUM(balance), 0) as total_debt
+      FROM repayments
+      WHERE (farmer_id = $1 OR farmer_id IN (SELECT id FROM farmer_profiles WHERE vendor_id = $1))
+        AND status IN ('pending', 'partial')
+        AND balance > 0
+   `, [farmerVendorId]);
+   const totalDebt = parseFloat(debtRes.rows[0]?.total_debt || 0);
+   const loanDeduction = Math.min(totalDebt, payment);
+
+   // 3. Fetch storage fee
+   const storageRes = await pool.query(`
+      SELECT COALESCE(SUM(storage_fee), 0) as storage_fee
+      FROM storage_tickets
+      WHERE batch_id = $1
+   `, [batchId]);
+   const storageDeduction = parseFloat(storageRes.rows[0]?.storage_fee || 0);
+
+   // 4. Fetch logistics fee
+   const logisticsRes = await pool.query(`
+      SELECT COALESCE(SUM(logistics_fee), 0) as logistics_fee
+      FROM logistics_tickets
+      WHERE batch_id = $1
+   `, [batchId]);
+   const logisticsDeduction = parseFloat(logisticsRes.rows[0]?.logistics_fee || 0);
+
+   // 5. Final Net Balance
+   const totalDeductions = loanDeduction + storageDeduction + logisticsDeduction;
+   const finalBalance = Math.max(0, payment - totalDeductions);
+
+   // 6. Save or update pending settlement record
+   const { rows } = await pool.query(`
+      INSERT INTO settlements (
+         batch_id, buyer_payment, loan_deduction, storage_deduction, logistics_deduction, final_balance, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+      ON CONFLICT (batch_id) DO UPDATE SET
+         buyer_payment = $2,
+         loan_deduction = $3,
+         storage_deduction = $4,
+         logistics_deduction = $5,
+         final_balance = $6,
+         status = 'pending',
+         updated_at = NOW()
+      RETURNING *
+   `, [batchId, payment, loanDeduction, storageDeduction, logisticsDeduction, finalBalance]);
+
+   return rows[0];
+}
+
+async function executeSettlementAuthorization(settlementId, authorizedBy) {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+
+      // 1. Lock and fetch settlement
+      const { rows: settRows } = await client.query(`
+         SELECT s.*, hb.vendor_id, hb.crop, hb.quantity_mt, hb.batch_number
+         FROM settlements s
+         JOIN harvest_batches hb ON s.batch_id = hb.batch_id
+         WHERE s.settlement_id = $1
+         FOR UPDATE
+      `, [settlementId]);
+
+      if (settRows.length === 0) {
+         throw new Error("Settlement record not found");
+      }
+      const settlement = settRows[0];
+      if (settlement.status === 'completed') {
+         throw new Error("Settlement has already been executed");
+      }
+
+      const farmerVendorId = settlement.vendor_id;
+      const loanDed = parseFloat(settlement.loan_deduction || 0);
+      const finalBal = parseFloat(settlement.final_balance || 0);
+
+      // 2. Loan recovery: Deduct from farmer's open debts and credit program/institution wallet
+      if (loanDed > 0) {
+         let remainingLoanToRecover = loanDed;
+         const openDebts = await client.query(`
+            SELECT id, balance
+            FROM repayments
+            WHERE (farmer_id = $1 OR farmer_id IN (SELECT id FROM farmer_profiles WHERE vendor_id = $1))
+              AND status IN ('pending', 'partial')
+              AND balance > 0
+            ORDER BY created_at ASC
+            FOR UPDATE
+         `, [farmerVendorId]);
+
+         for (const debt of openDebts.rows) {
+            if (remainingLoanToRecover <= 0) break;
+            const currentBal = parseFloat(debt.balance);
+            const recoverAmt = Math.min(currentBal, remainingLoanToRecover);
+
+            await client.query(`
+               UPDATE repayments
+               SET recovered_amount = recovered_amount + $2,
+                   balance = balance - $2,
+                   status = CASE WHEN balance - $2 <= 0 THEN 'completed' ELSE 'partial' END,
+                   completed_at = CASE WHEN balance - $2 <= 0 THEN NOW() ELSE completed_at END
+               WHERE id = $1
+            `, [debt.id, recoverAmt]);
+
+            remainingLoanToRecover -= recoverAmt;
+         }
+
+         // Credit the institution / program wallet
+         const instWallets = await client.query(`
+            SELECT id FROM wallets WHERE owner_type IN ('institution', 'program') ORDER BY created_at ASC LIMIT 1
+         `);
+         if (instWallets.rows.length > 0) {
+            const instWalletId = instWallets.rows[0].id;
+            await client.query(`UPDATE wallets SET balance = balance + $1 WHERE id = $2`, [loanDed, instWalletId]);
+            await client.query(`
+               INSERT INTO wallet_transactions (wallet_id, type, amount, description, reference_id, reference_type, status)
+               VALUES ($1, 'credit', $2, 'Loan recovery repayment from off-take settlement', $3, 'settlement_loan_recovery', 'completed')
+            `, [instWalletId, loanDed, settlementId]);
+         }
+      }
+
+      // 3. Disburse Net Surplus (final_balance) to Farmer/Aggregator wallet
+      if (finalBal > 0) {
+         let fWalletRes = await client.query(`SELECT id FROM wallets WHERE owner_id = $1`, [farmerVendorId]);
+         let fWalletId;
+         if (fWalletRes.rows.length === 0) {
+            const newW = await client.query(`
+               INSERT INTO wallets (owner_id, owner_type, balance, locked_balance, status)
+               VALUES ($1, 'farmer', $2, 0, 'active')
+               RETURNING id
+            `, [farmerVendorId, finalBal]);
+            fWalletId = newW.rows[0].id;
+         } else {
+            fWalletId = fWalletRes.rows[0].id;
+            await client.query(`UPDATE wallets SET balance = balance + $1 WHERE id = $2`, [finalBal, fWalletId]);
+         }
+
+         await client.query(`
+            INSERT INTO wallet_transactions (wallet_id, type, amount, description, reference_id, reference_type, status)
+            VALUES ($1, 'credit', $2, 'Net off-take harvest sales proceeds payout', $3, 'harvest_settlement', 'completed')
+         `, [fWalletId, finalBal, settlementId]);
+      }
+
+      // 4. Update settlement status to completed
+      const { rows: updatedSett } = await client.query(`
+         UPDATE settlements
+         SET status = 'completed', updated_at = NOW()
+         WHERE settlement_id = $1
+         RETURNING *
+      `, [settlementId]);
+
+      // 5. Update harvest batch & inventory position
+      await client.query(`UPDATE harvest_batches SET status = 'settled', updated_at = NOW() WHERE batch_id = $1`, [settlement.batch_id]);
+      await client.query(`UPDATE inventory_positions SET status = 'Sold', updated_at = NOW() WHERE batch_id = $1`, [settlement.batch_id]);
+
+      await client.query("COMMIT");
+      return updatedSett[0];
+   } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+   } finally {
+      client.release();
+   }
+}
+
+async function getPendingSettlements() {
+   await pool.query(`
+      ALTER TABLE settlements ADD COLUMN IF NOT EXISTS loan_deduction NUMERIC(15,2) DEFAULT 0;
+   `);
+   const { rows } = await pool.query(`
+      SELECT 
+         s.*,
+         hb.batch_number, hb.crop, hb.quantity_mt, hb.location,
+         v.fname, v.lname, v.company_name, v.role as vendor_role
+      FROM settlements s
+      JOIN harvest_batches hb ON s.batch_id = hb.batch_id
+      JOIN vendors v ON hb.vendor_id = v.id
+      WHERE s.status = 'pending'
+      ORDER BY s.created_at DESC
+   `);
+   return rows;
+}
+
+async function getAllSettlements() {
+   await pool.query(`
+      ALTER TABLE settlements ADD COLUMN IF NOT EXISTS loan_deduction NUMERIC(15,2) DEFAULT 0;
+   `);
+   const { rows } = await pool.query(`
+      SELECT 
+         s.*,
+         hb.batch_number, hb.crop, hb.quantity_mt, hb.location,
+         v.fname, v.lname, v.company_name, v.role as vendor_role
+      FROM settlements s
+      JOIN harvest_batches hb ON s.batch_id = hb.batch_id
+      JOIN vendors v ON hb.vendor_id = v.id
+      ORDER BY s.created_at DESC
+   `);
+   return rows;
+}
+
+async function getMySettlements(vendorId) {
+   await pool.query(`
+      ALTER TABLE settlements ADD COLUMN IF NOT EXISTS loan_deduction NUMERIC(15,2) DEFAULT 0;
+   `);
+   const { rows } = await pool.query(`
+      SELECT 
+         s.*,
+         hb.batch_number, hb.crop, hb.quantity_mt, hb.status as batch_status
+      FROM settlements s
+      JOIN harvest_batches hb ON s.batch_id = hb.batch_id
+      WHERE hb.vendor_id = $1
+      ORDER BY s.created_at DESC
+   `, [vendorId]);
+   return rows;
+}
+
 export {
    createPreHarvestListing, getPreHarvestListingsByCluster, getAllPreHarvestListings,
    createForwardContract, getForwardContractsByBuyer, getForwardContractsForSales,
@@ -1933,7 +2285,8 @@ export {
    createLogisticsEntry, getLogisticsByCluster,
    createBuyerMatch, getBuyerMatches,
    createSale, getSalesByCluster,
-   createRepayment, updateRepayment,
+   createRepayment, updateRepayment, getRepaymentsByFarmer,
+   calculateWaterfallBreakdown, executeSettlementAuthorization, getPendingSettlements, getAllSettlements, getMySettlements,
    getPipelineStats,
    payoutDistributor,
    getAllDistributors,

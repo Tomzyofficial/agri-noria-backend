@@ -178,4 +178,102 @@ programsController.getNotifications = async (req, res) => {
    }
 };
 
+// Dismiss depletion alert or mark notification as read
+programsController.dismissNotification = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { id } = req.body || {};
+      if (id) {
+         await pool.query(
+            "UPDATE program_notifications SET is_read = true WHERE id = $1 AND recipient_id = $2",
+            [id, payload.id]
+         );
+      } else {
+         await pool.query(
+            "UPDATE program_notifications SET is_read = true WHERE recipient_id = $1",
+            [payload.id]
+         );
+      }
+      return res.status(200).json({ success: true, message: "Notification dismissed successfully" });
+   } catch (error) {
+      console.error("Error dismissing notification:", error);
+      return res.status(500).json({ success: false, error: "Failed to dismiss notification" });
+   }
+};
+
+// Get Input Packages for Program
+programsController.getInputPackages = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { id } = req.params;
+      await pool.query(`
+         CREATE TABLE IF NOT EXISTS input_packages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            program_id UUID REFERENCES programs(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            seeds BOOLEAN DEFAULT false,
+            fertilizer BOOLEAN DEFAULT false,
+            herbicides BOOLEAN DEFAULT false,
+            total_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+            items JSONB DEFAULT '[]'::jsonb,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+         );
+         ALTER TABLE input_packages ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;
+      `);
+
+      const { rows } = await pool.query(
+         "SELECT * FROM input_packages WHERE program_id = $1 ORDER BY created_at DESC",
+         [id]
+      );
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching input packages:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch input packages" });
+   }
+};
+
+// Create Input Package for Program
+programsController.createInputPackage = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { id } = req.params;
+      const { name, seeds = false, fertilizer = false, herbicides = false, total_value = 0, items = [] } = req.body;
+      if (!name) {
+         return res.status(400).json({ success: false, error: "Package name is required" });
+      }
+
+      await pool.query(`
+         CREATE TABLE IF NOT EXISTS input_packages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            program_id UUID REFERENCES programs(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            seeds BOOLEAN DEFAULT false,
+            fertilizer BOOLEAN DEFAULT false,
+            herbicides BOOLEAN DEFAULT false,
+            total_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+            items JSONB DEFAULT '[]'::jsonb,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+         );
+         ALTER TABLE input_packages ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;
+      `);
+
+      const { rows } = await pool.query(`
+         INSERT INTO input_packages (program_id, name, seeds, fertilizer, herbicides, total_value, items)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *
+      `, [id, name, seeds, fertilizer, herbicides, parseFloat(total_value) || 0, JSON.stringify(items)]);
+
+      return res.status(201).json({ success: true, data: rows[0], message: "Input package defined successfully" });
+   } catch (error) {
+      console.error("Error creating input package:", error);
+      return res.status(500).json({ success: false, error: "Failed to create input package" });
+   }
+};
+
 export default programsController;
