@@ -57,7 +57,7 @@ vendorAuthController.signin = async (req, res) => {
   }
 
   try {
-    const normalizedEmail = email.toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
     // Check if vendor exists
     const vendor = await getUserByEmail(normalizedEmail);
 
@@ -86,6 +86,37 @@ vendorAuthController.signin = async (req, res) => {
       });
     }
 
+    // Auto-verify farmer on login so they can access the full platform
+    if (vendor.role?.toLowerCase() === "farmer" || !vendor.is_verified) {
+      const { default: pool } = await import("../../../lib/connect.js");
+      await pool.query(
+        `UPDATE vendors 
+         SET is_verified = true, 
+             onboarding_status = CASE WHEN onboarding_status = 'pending' THEN 'verified' ELSE onboarding_status END,
+             onboarding_level = GREATEST(COALESCE(onboarding_level, 0), 2),
+             updated_at = NOW() 
+         WHERE id = $1`,
+        [vendor.id]
+      );
+      await pool.query(
+        `UPDATE farmer_profiles 
+         SET onboarding_status = CASE WHEN onboarding_status = 'pending' THEN 'completed' ELSE onboarding_status END,
+             updated_at = NOW() 
+         WHERE vendor_id = $1`,
+        [vendor.id]
+      );
+      await pool.query(
+        `UPDATE farmer_organization_memberships 
+         SET verification_status = 'verified',
+             updated_at = NOW() 
+         WHERE farmer_id IN (SELECT id FROM farmer_profiles WHERE vendor_id = $1)`,
+        [vendor.id]
+      );
+      vendor.is_verified = true;
+      if (vendor.onboarding_status === "pending") vendor.onboarding_status = "verified";
+      vendor.onboarding_level = Math.max(vendor.onboarding_level || 0, 2);
+    }
+
     // Create session (attach cookie to response)
     const token = await createVendorSession(res, {
       user: {
@@ -104,8 +135,8 @@ vendorAuthController.signin = async (req, res) => {
     return res.status(200).json({
       success: true,
       user: {
-        //   workspace: vendor.workspace,
-        //   role: vendor.role,
+        is_verified: vendor.is_verified,
+        onboarding_status: vendor.onboarding_status,
         token: token,
       },
     });

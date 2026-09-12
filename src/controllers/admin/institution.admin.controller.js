@@ -466,4 +466,513 @@ institutionAdminController.creditUserWallet = async (req, res) => {
    }
 };
 
+// Organization Members (Cooperative / Producer Association)
+institutionAdminController.getMembers = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const members = await dbModule.getOrganizationMembers(payload.id, payload.role);
+      return res.status(200).json({ success: true, data: members });
+   } catch (error) {
+      console.error("Error fetching organization members:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch members" });
+   }
+};
+
+institutionAdminController.importMember = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+
+      // Check if payload is bulk array
+      const farmerList = Array.isArray(req.body) ? req.body : req.body.farmers;
+      if (Array.isArray(farmerList) && farmerList.length > 0) {
+         let newCount = 0;
+         let linkedCount = 0;
+         const createdCredentials = [];
+         const rowErrors = [];
+
+         for (const farmerData of farmerList) {
+            try {
+               const resObj = await dbModule.importOrLinkFarmerToOrg(payload.id, farmerData);
+               if (resObj.isNewFarmer) {
+                  newCount++;
+                  if (resObj.tempPassword) {
+                     createdCredentials.push({
+                        name: resObj.name,
+                        email: resObj.email,
+                        phone: resObj.phone,
+                        tempPassword: resObj.tempPassword,
+                        membership_number: farmerData.membership_number || null,
+                        commodity: farmerData.commodity || null
+                     });
+                  }
+               } else {
+                  linkedCount++;
+               }
+            } catch (err) {
+               console.warn("Error importing item in bulk:", err.message);
+               rowErrors.push({
+                  farmer: `${farmerData.fname || ''} ${farmerData.lname || ''}`.trim() || farmerData.phone || 'Unknown',
+                  error: err.message
+               });
+            }
+         }
+         return res.status(200).json({
+            success: true,
+            message: `Bulk import completed: ${newCount} new farmers registered with temporary credentials, ${linkedCount} existing farmers linked to your organization.`,
+            newCount,
+            linkedCount,
+            totalProcessed: farmerList.length,
+            credentials: createdCredentials,
+            errors: rowErrors.length > 0 ? rowErrors : undefined
+         });
+      }
+
+      // Single import
+      const result = await dbModule.importOrLinkFarmerToOrg(payload.id, req.body);
+      return res.status(200).json(result);
+   } catch (error) {
+      console.error("Error importing farmer member:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to import farmer" });
+   }
+};
+
+// Polymorphic Groups (Member Clusters, Producer Groups, Research Cohorts)
+institutionAdminController.getGroups = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const groupType = req.query.group_type || null;
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const groups = await dbModule.getOrganizationGroups(payload.id, groupType, payload.role);
+      return res.status(200).json({ success: true, data: groups });
+   } catch (error) {
+      console.error("Error fetching groups:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch groups" });
+   }
+};
+
+institutionAdminController.createGroup = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const newGroup = await dbModule.createOrganizationGroup(payload.id, req.body);
+      return res.status(201).json({ success: true, data: newGroup });
+   } catch (error) {
+      console.error("Error creating group:", error);
+      return res.status(500).json({ success: false, error: "Failed to create group" });
+   }
+};
+
+institutionAdminController.assignGroupMember = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { groupId, farmerId, role, cohortLabel } = req.body;
+      if (!groupId || !farmerId) {
+         return res.status(400).json({ success: false, error: "Group ID and Farmer ID required" });
+      }
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const membership = await dbModule.assignFarmerToGroup(groupId, farmerId, role, cohortLabel);
+      return res.status(200).json({ success: true, data: membership });
+   } catch (error) {
+      console.error("Error assigning group member:", error);
+      return res.status(500).json({ success: false, error: "Failed to assign member to group" });
+   }
+};
+
+// Producer Association Affiliations
+institutionAdminController.getAffiliations = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const affiliations = await dbModule.getAffiliatedCooperatives(payload.id);
+      return res.status(200).json({ success: true, data: affiliations });
+   } catch (error) {
+      console.error("Error fetching affiliations:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch affiliations" });
+   }
+};
+
+institutionAdminController.affiliateCooperative = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { coopId, status } = req.body;
+      if (!coopId) return res.status(400).json({ success: false, error: "Cooperative ID is required" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const result = await dbModule.affiliateCooperative(payload.id, coopId, status || 'active');
+      return res.status(200).json({ success: true, data: result });
+   } catch (error) {
+      console.error("Error updating affiliation:", error);
+      return res.status(500).json({ success: false, error: "Failed to update affiliation" });
+   }
+};
+
+// Research Projects & Cohorts
+institutionAdminController.getResearchProjects = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const projects = await dbModule.getResearchProjects(payload.id, payload.role);
+      return res.status(200).json({ success: true, data: projects });
+   } catch (error) {
+      console.error("Error fetching research projects:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch research projects" });
+   }
+};
+
+institutionAdminController.createResearchProject = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const project = await dbModule.createResearchProject(payload.id, req.body);
+      return res.status(201).json({ success: true, data: project });
+   } catch (error) {
+      console.error("Error creating research project:", error);
+      return res.status(500).json({ success: false, error: "Failed to create research project" });
+   }
+};
+
+institutionAdminController.requestProjectFunding = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { projectId, amount, notes } = req.body;
+      if (!projectId || !amount) {
+         return res.status(400).json({ success: false, error: "Project ID and Amount are required" });
+      }
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const updated = await dbModule.requestResearchProjectFunding(payload.id, projectId, amount, notes);
+      return res.status(200).json({ success: true, data: updated, message: "Project grant funding requested successfully" });
+   } catch (error) {
+      console.error("Error requesting project funding:", error);
+      return res.status(500).json({ success: false, error: "Failed to request funding" });
+   }
+};
+
+institutionAdminController.getObservations = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { projectId } = req.query;
+      if (!projectId) return res.status(400).json({ success: false, error: "Project ID required" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const observations = await dbModule.getResearchObservations(projectId);
+      return res.status(200).json({ success: true, data: observations });
+   } catch (error) {
+      console.error("Error fetching observations:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch observations" });
+   }
+};
+
+institutionAdminController.logObservation = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const dbModule = await import("../../db/admin/admin.db.js");
+      const observation = await dbModule.logResearchObservation(payload.id, req.body);
+      return res.status(201).json({ success: true, data: observation });
+   } catch (error) {
+      console.error("Error logging observation:", error);
+      return res.status(500).json({ success: false, error: "Failed to log observation" });
+   }
+};
+
+institutionAdminController.getEscrow = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows } = await pool.query(`
+         SELECT 
+            wt.id,
+            wt.amount,
+            wt.type,
+            wt.description,
+            wt.status,
+            wt.created_at,
+            p.name as program_name,
+            COALESCE(pw.balance, 0) as program_wallet_balance
+         FROM wallet_transactions wt
+         LEFT JOIN wallets w ON wt.wallet_id = w.id
+         LEFT JOIN programs p ON wt.reference_id = p.id::text OR wt.description ILIKE '%' || p.name || '%'
+         LEFT JOIN program_wallets pw ON p.id = pw.program_id
+         WHERE w.owner_id = $1 OR wt.reference_type IN ('program_funding', 'escrow', 'treasury_funding')
+         ORDER BY wt.created_at DESC
+         LIMIT 50
+      `, [payload.id]);
+
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching escrow data:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch escrow data" });
+   }
+};
+
+institutionAdminController.getMonitoring = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows: clusters } = await pool.query(`
+         SELECT c.id, c.name, c.region, c.target_hectares,
+                COUNT(cm.id) as total_farmers,
+                COALESCE(AVG(fp.farm_size_hectares), 0) as avg_farm_size
+         FROM clusters c
+         LEFT JOIN cluster_members cm ON c.id = cm.cluster_id
+         LEFT JOIN farmer_profiles fp ON cm.farmer_id = fp.id
+         GROUP BY c.id, c.name, c.region, c.target_hectares
+         ORDER BY c.created_at DESC
+      `);
+
+      let alerts = [];
+      try {
+         const alertRes = await pool.query("SELECT * FROM risk_reports ORDER BY created_at DESC LIMIT 10");
+         alerts = alertRes.rows;
+      } catch (_) {}
+
+      return res.status(200).json({ success: true, data: { clusters, alerts } });
+   } catch (error) {
+      console.error("Error fetching monitoring data:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch monitoring data" });
+   }
+};
+
+institutionAdminController.getProcurement = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows } = await pool.query(`
+         SELECT ir.id, ir.total_value, ir.status, ir.funds_status, ir.items_status, ir.created_at,
+                ip.name as package_name, ip.crop,
+                v.fname || ' ' || v.lname as farmer_name,
+                c.name as cluster_name
+         FROM input_requests ir
+         LEFT JOIN input_packages ip ON ir.package_id = ip.id
+         LEFT JOIN farmer_profiles fp ON ir.farmer_id = fp.id
+         LEFT JOIN vendors v ON fp.vendor_id = v.id
+         LEFT JOIN clusters c ON ir.cluster_id = c.id
+         ORDER BY ir.created_at DESC
+         LIMIT 50
+      `);
+
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching procurement data:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch procurement data" });
+   }
+};
+
+institutionAdminController.getTraceability = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows } = await pool.query(`
+         SELECT hb.batch_id, hb.batch_number, hb.crop, hb.quantity_mt, hb.status as batch_status, hb.created_at,
+                v.fname || ' ' || v.lname as farmer_name,
+                lt.ticket_number as logistics_ticket, lt.status as logistics_status,
+                st.ticket_number as storage_ticket, st.status as storage_status
+         FROM harvest_batches hb
+         LEFT JOIN vendors v ON hb.vendor_id = v.id
+         LEFT JOIN logistics_tickets lt ON hb.batch_id = lt.batch_id
+         LEFT JOIN storage_tickets st ON hb.batch_id = st.batch_id
+         ORDER BY hb.created_at DESC
+         LIMIT 50
+      `);
+
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching traceability data:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch traceability data" });
+   }
+};
+
+institutionAdminController.getReports = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows: programs } = await pool.query(`
+         SELECT p.id, p.name, p.crop, p.budget, p.target_farmers, p.status, p.created_at,
+                COALESCE(pw.balance, 0) as wallet_balance
+         FROM programs p
+         LEFT JOIN program_wallets pw ON p.id = pw.program_id
+         ORDER BY p.created_at DESC
+      `);
+
+      return res.status(200).json({ success: true, data: { programs } });
+   } catch (error) {
+      console.error("Error fetching reports:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch reports" });
+   }
+};
+
+institutionAdminController.getExtension = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows: officers } = await pool.query(`
+         SELECT v.id, v.fname, v.lname, v.email, v.phone, v.role, v.approval_status
+         FROM vendors v
+         WHERE v.role IN ('field officer', 'agronomist', 'inspector', 'extension worker')
+         ORDER BY v.created_at DESC
+      `);
+
+      let schedules = [];
+      try {
+         const schedRes = await pool.query(`
+            SELECT vs.*, v.fname || ' ' || v.lname as officer_name
+            FROM visit_schedules vs
+            LEFT JOIN vendors v ON vs.officer_id = v.id
+            ORDER BY vs.scheduled_date DESC
+            LIMIT 20
+         `);
+         schedules = schedRes.rows;
+      } catch (_) {}
+
+      return res.status(200).json({ success: true, data: { officers, schedules } });
+   } catch (error) {
+      console.error("Error fetching extension data:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch extension data" });
+   }
+};
+
+institutionAdminController.getNgoDistribution = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      let rows = [];
+      try {
+         const distRes = await pool.query(`
+            SELECT id_dist.*, ir.total_value, ip.name as package_name,
+                   v.fname || ' ' || v.lname as farmer_name
+            FROM input_distributions id_dist
+            LEFT JOIN input_requests ir ON id_dist.request_id = ir.id
+            LEFT JOIN input_packages ip ON id_dist.package_id = ip.id
+            LEFT JOIN farmer_profiles fp ON id_dist.farmer_id = fp.id
+            LEFT JOIN vendors v ON fp.vendor_id = v.id
+            ORDER BY id_dist.created_at DESC
+            LIMIT 50
+         `);
+         rows = distRes.rows;
+      } catch (_) {}
+
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching NGO distribution data:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch distribution data" });
+   }
+};
+
+institutionAdminController.getCooperatives = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows } = await pool.query(`
+         SELECT id, company_name, fname, lname, email, phone, role
+         FROM vendors
+         WHERE role IN ('cooperative', 'producer association', 'aggregator')
+         ORDER BY created_at DESC
+      `);
+
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching cooperatives:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch cooperatives" });
+   }
+};
+
+institutionAdminController.getTrialPlots = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      await pool.query(`
+         CREATE TABLE IF NOT EXISTS trial_plots (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            institution_id UUID REFERENCES vendors(id),
+            name VARCHAR(255) NOT NULL,
+            crop VARCHAR(100) NOT NULL,
+            hectares NUMERIC(10,2) DEFAULT 1,
+            location VARCHAR(255),
+            trial_objective TEXT,
+            status VARCHAR(50) DEFAULT 'active',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+         )
+      `);
+
+      const { rows } = await pool.query(
+         "SELECT * FROM trial_plots WHERE institution_id = $1 ORDER BY created_at DESC",
+         [payload.id]
+      );
+      return res.status(200).json({ success: true, data: rows });
+   } catch (error) {
+      console.error("Error fetching trial plots:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch trial plots" });
+   }
+};
+
+institutionAdminController.createTrialPlot = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      await pool.query(`
+         CREATE TABLE IF NOT EXISTS trial_plots (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            institution_id UUID REFERENCES vendors(id),
+            name VARCHAR(255) NOT NULL,
+            crop VARCHAR(100) NOT NULL,
+            hectares NUMERIC(10,2) DEFAULT 1,
+            location VARCHAR(255),
+            trial_objective TEXT,
+            status VARCHAR(50) DEFAULT 'active',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+         )
+      `);
+
+      const { name, crop, hectares, location, trial_objective } = req.body;
+      const { rows } = await pool.query(`
+         INSERT INTO trial_plots (institution_id, name, crop, hectares, location, trial_objective)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *
+      `, [payload.id, name, crop, parseFloat(hectares) || 1, location, trial_objective]);
+
+      return res.status(201).json({ success: true, data: rows[0], message: "Trial plot created successfully" });
+   } catch (error) {
+      console.error("Error creating trial plot:", error);
+      return res.status(500).json({ success: false, error: "Failed to create trial plot" });
+   }
+};
+
 export default institutionAdminController;
+

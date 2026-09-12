@@ -16,7 +16,8 @@ import {
    createPreHarvestListing, getPreHarvestListingsByCluster, getAllPreHarvestListings,
    createBuyerMatch, getBuyerMatches,
    createSale, getSalesByCluster,
-   createRepayment, updateRepayment,
+   createRepayment, updateRepayment, getRepaymentsByFarmer,
+   calculateWaterfallBreakdown, executeSettlementAuthorization, getPendingSettlements, getAllSettlements, getMySettlements,
    getPipelineStats,
    getAllDistributors,
    disableBuyerAccount,
@@ -352,6 +353,32 @@ pipelineController.getClusters = async (req, res) => {
          clusters = clusters.filter(c => c.supervisor_id === payload.id);
       }
 
+      // If the user is a farmer affiliated with an institution (Producer Association, Cooperative, Research Institution),
+      // only show clusters created by their affiliated institution
+      if (payload.role?.toLowerCase() === 'farmer') {
+         const { default: pool } = await import("../../lib/connect.js");
+         const { rows: farmerAffiliations } = await pool.query(
+            `SELECT fom.organization_id, v.company_name as org_name, v.role as org_role
+             FROM farmer_organization_memberships fom
+             JOIN farmer_profiles fp ON fom.farmer_id = fp.id
+             JOIN vendors v ON fom.organization_id = v.id
+             WHERE fp.vendor_id = $1
+               AND LOWER(v.role) IN ('producer association', 'cooperative', 'research institution')
+             ORDER BY fom.created_at DESC LIMIT 1`,
+            [payload.id]
+         );
+
+         if (farmerAffiliations.length > 0) {
+            const orgId = String(farmerAffiliations[0].organization_id);
+            clusters = clusters.filter(c => 
+               String(c.owner_id) === orgId ||
+               String(c.supervisor_id) === orgId ||
+               String(c.program_created_by) === orgId ||
+               String(c.project_institution_id) === orgId
+            );
+         }
+      }
+
       return res.status(200).json({ success: true, data: clusters });
    } catch (error) {
       console.error("Error fetching clusters:", error);
@@ -450,6 +477,48 @@ pipelineController.assignFarmer = async (req, res) => {
 
       if (!farmer_id) {
          return res.status(400).json({ success: false, error: "No farmer profile found for this account" });
+      }
+
+      // Check if farmer is affiliated with an institution (Producer Association, Cooperative, Research Institution)
+      const { default: pool } = await import("../../lib/connect.js");
+      const { rows: affiliations } = await pool.query(
+         `SELECT fom.organization_id, v.role as org_role, COALESCE(v.company_name, v.fname || ' ' || v.lname) as org_name
+          FROM farmer_organization_memberships fom
+          JOIN vendors v ON fom.organization_id = v.id
+          WHERE fom.farmer_id = $1
+            AND LOWER(v.role) IN ('producer association', 'cooperative', 'research institution')
+          ORDER BY fom.created_at DESC
+          LIMIT 1`,
+         [farmer_id]
+      );
+
+      if (affiliations.length > 0) {
+         const org = affiliations[0];
+         // Check if this cluster was created by the farmer's affiliated institution
+         const { rows: clusterCheck } = await pool.query(
+            `SELECT c.id, c.name, c.owner_id, c.supervisor_id, p.created_by as program_creator, rp.institution_id as project_institution
+             FROM clusters c
+             LEFT JOIN programs p ON c.program_id = p.id
+             LEFT JOIN research_projects rp ON c.project_id = rp.id
+             WHERE c.id = $1`,
+            [cluster_id]
+         );
+
+         if (clusterCheck.length > 0) {
+            const cl = clusterCheck[0];
+            const isCreatedByOrg = 
+               String(cl.owner_id) === String(org.organization_id) ||
+               String(cl.supervisor_id) === String(org.organization_id) ||
+               String(cl.program_creator) === String(org.organization_id) ||
+               String(cl.project_institution) === String(org.organization_id);
+
+            if (!isCreatedByOrg) {
+               return res.status(403).json({
+                  success: false,
+                  error: `Farmers registered under ${org.org_name} (${org.org_role}) can only join clusters created by their affiliated institution.`
+               });
+            }
+         }
       }
 
       await assignFarmerToCluster(cluster_id, farmer_id);
@@ -936,9 +1005,11 @@ pipelineController.approveItems = async (req, res) => {
       const payload = await verifyVendorToken(req);
       if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-      // Strict role check: Only Finance can approve
-      if (payload.role?.toLowerCase() !== 'finance' && payload.role?.toLowerCase() !== 'super admin') {
-         return res.status(403).json({ success: false, error: "Only Finance roles can approve items" });
+      // Role check: Program Management, Supervisors, Agronomists, Finance, and Admin can approve items
+      const userRole = payload.role?.toLowerCase();
+      const allowedRoles = ['finance', 'super admin', 'admin', 'program management', 'supervisor', 'cluster supervisor', 'agronomist', 'institution'];
+      if (!allowedRoles.includes(userRole)) {
+         return res.status(403).json({ success: false, error: "Only Program Management or authorized roles can approve items" });
       }
 
       const { distributor_id } = req.body;
@@ -1250,6 +1321,106 @@ pipelineController.processRepayment = async (req, res) => {
    } catch (error) {
       console.error("Error processing repayment:", error);
       return res.status(500).json({ success: false, error: "Failed to process repayment" });
+   }
+};
+
+pipelineController.getMyRepayments = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const repayments = await getRepaymentsByFarmer(payload.id);
+      return res.status(200).json({ success: true, data: repayments });
+   } catch (error) {
+      console.error("Error fetching farmer repayments:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch repayments" });
+   }
+};
+
+// ============ SETTLEMENT WATERFALL ENGINE ============
+
+pipelineController.calculateSettlement = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { batchId, buyerPayment } = req.body;
+      if (!batchId || !buyerPayment) {
+         return res.status(400).json({ success: false, error: "batchId and buyerPayment are required" });
+      }
+
+      const settlement = await calculateWaterfallBreakdown(batchId, parseFloat(buyerPayment));
+      return res.status(200).json({ 
+         success: true, 
+         message: "Settlement calculated and pending Finance authorization",
+         data: settlement 
+      });
+   } catch (error) {
+      console.error("Error calculating settlement:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to calculate settlement" });
+   }
+};
+
+pipelineController.getPendingSettlements = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const pending = await getPendingSettlements();
+      return res.status(200).json({ success: true, data: pending });
+   } catch (error) {
+      console.error("Error fetching pending settlements:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch pending settlements" });
+   }
+};
+
+pipelineController.getAllSettlements = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const settlements = await getAllSettlements();
+      return res.status(200).json({ success: true, data: settlements });
+   } catch (error) {
+      console.error("Error fetching all settlements:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch settlements" });
+   }
+};
+
+pipelineController.getMySettlements = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const settlements = await getMySettlements(payload.id);
+      return res.status(200).json({ success: true, data: settlements });
+   } catch (error) {
+      console.error("Error fetching my settlements:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch settlements" });
+   }
+};
+
+pipelineController.executeSettlement = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const allowedRoles = ["finance", "institution", "super admin", "admin", "program_management"];
+      if (!allowedRoles.includes(payload.role?.toLowerCase())) {
+         return res.status(403).json({ success: false, error: "Unauthorized. Requires Finance or Institution authorization." });
+      }
+
+      const settlementId = req.params.id;
+      const executed = await executeSettlementAuthorization(settlementId, payload.id);
+
+      return res.status(200).json({ 
+         success: true, 
+         message: "Settlement executed successfully. Loan recovered and net profit disbursed.",
+         data: executed 
+      });
+   } catch (error) {
+      console.error("Error executing settlement authorization:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to execute settlement" });
    }
 };
 

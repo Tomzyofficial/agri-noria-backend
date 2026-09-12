@@ -6,6 +6,7 @@ import { generateBuyerOrderConfirmationTemplate } from "./generateBuyerOrderConf
 import { generateVendorNewOrderTemplate } from "./generateVendorNewOrderTemplate.js";
 import { generateLogisticsAssignmentTemplate } from "./generateLogisticsAssignmentTemplate.js";
 import { generateShipmentStartTemplate } from "./generateShipmentStartTemplate.js";
+import { generateFarmerCredentialsTemplate } from "./generateFarmerCredentialsTemplate.js";
 
 class EmailService {
   constructor() {
@@ -269,6 +270,29 @@ class EmailService {
       };
     } catch (error) {
       console.error("Error sending order notification emails:", error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Send credentials email to newly registered farmer
+  async sendFarmerCredentialsEmail({ email, name, phone, tempPassword, organizationName, organizationRole }) {
+    try {
+      if (!email || email.endsWith("@agrinoria.eco") || email.includes("example.com")) {
+        return { success: false, skipped: true, reason: "Placeholder or example email" };
+      }
+
+      const mailOptions = {
+        from: `"${process.env.EMAIL_FROM_NAME || "Agri-Noria"}" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "Your Agri-Noria Farmer Account Credentials 🎉",
+        html: generateFarmerCredentialsTemplate({ name, email, phone, tempPassword, organizationName, organizationRole }),
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      console.log("Farmer credentials email sent successfully:", result.messageId);
+      return { success: true, messageId: result.messageId };
+    } catch (error) {
+      console.error("Error sending farmer credentials email:", error.message);
       return { success: false, error: error.message };
     }
   }

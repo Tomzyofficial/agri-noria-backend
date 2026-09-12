@@ -273,3 +273,49 @@ export const enrollFarmer = async (req, res) => {
       res.status(500).json({ success: false, message: "Server error" });
    }
 };
+
+export const getVerifications = async (req, res) => {
+   try {
+      const verifications = await fieldOpsDb.getVerifications();
+      return res.status(200).json({ success: true, data: verifications });
+   } catch (error) {
+      console.error("Error getting verifications:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+   }
+};
+
+export const approveVerification = async (req, res) => {
+   try {
+      const { id } = req.params;
+      const result = await fieldOpsDb.approveVerification(id);
+      return res.status(200).json({ success: true, data: result, message: "Verification approved successfully" });
+   } catch (error) {
+      console.error("Error approving verification:", error);
+      return res.status(500).json({ success: false, message: error.message || "Server error" });
+   }
+};
+
+export const rejectVerification = async (req, res) => {
+   try {
+      const { id } = req.params;
+      const { reason } = req.body || {};
+      const result = await fieldOpsDb.rejectVerification(id, reason);
+      return res.status(200).json({ success: true, data: result, message: "Verification rejected" });
+   } catch (error) {
+      console.error("Error rejecting verification:", error);
+      return res.status(500).json({ success: false, message: error.message || "Server error" });
+   }
+};
+
+export const createVerification = async (req, res) => {
+   try {
+      const { farmer_id, cluster_id, status, notes } = req.body;
+      const officer_id = req.user?.id || req.body.officer_id;
+      const newVerification = await fieldOpsDb.createInspection({ farmer_id, officer_id, cluster_id, status: status || 'PENDING', notes });
+      return res.status(201).json({ success: true, data: newVerification });
+   } catch (error) {
+      console.error("Error creating verification:", error);
+      return res.status(500).json({ success: false, message: "Server error" });
+   }
+};
+

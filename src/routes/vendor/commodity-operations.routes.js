@@ -18,7 +18,8 @@ import {
   getStorageDashboardStats,
   getIncomingTickets,
   acceptStorageTicket,
-  updateStorageSettings
+  updateStorageSettings,
+  issueNwrReceipt
 } from "../../controllers/vendor/commodity-operations/storage.controller.js";
 
 const router = express.Router();
@@ -43,6 +44,7 @@ router.post("/harvest/request-storage", requestStorage);
 router.get("/storage/dashboard", getStorageDashboardStats);
 router.get("/storage/tickets", getIncomingTickets);
 router.post("/storage/tickets/:ticket_id/accept", acceptStorageTicket);
+router.post("/storage/tickets/:ticket_id/issue-nwr", issueNwrReceipt);
 router.post("/storage/settings", updateStorageSettings);
 
 // Logistics Provider Routes
@@ -50,6 +52,7 @@ import {
   getLogisticsDashboardStats,
   getIncomingLogisticsTickets,
   acceptLogisticsTicket,
+  completeLogisticsTicket,
   getLogisticsSettings,
   updateLogisticsSettings
 } from "../../controllers/vendor/commodity-operations/logistics.controller.js";
@@ -58,6 +61,7 @@ router.post("/harvest/request-logistics", requestLogistics);
 router.get("/logistics/dashboard", getLogisticsDashboardStats);
 router.get("/logistics/tickets", getIncomingLogisticsTickets);
 router.post("/logistics/tickets/:ticket_id/accept", acceptLogisticsTicket);
+router.post("/logistics/tickets/:ticket_id/deliver", completeLogisticsTicket);
 router.get("/logistics/settings", getLogisticsSettings);
 router.post("/logistics/settings", updateLogisticsSettings);
 

@@ -1,10 +1,11 @@
 import pool from "../../lib/connect.js";
 
-// Get user by email
-async function getUserByEmail(email) {
+// Get user by email or phone
+async function getUserByEmail(emailOrPhone) {
+  const identifier = emailOrPhone ? String(emailOrPhone).trim() : "";
   const { rows } = await pool.query(
-    "SELECT id, email, fname, lname, phone, pword, workspace, role, is_suspended, onboarding_status, is_verified, onboarding_level FROM vendors WHERE email = $1 LIMIT 1",
-    [email],
+    "SELECT id, email, fname, lname, phone, pword, workspace, role, is_suspended, onboarding_status, is_verified, onboarding_level FROM vendors WHERE LOWER(email) = LOWER($1) OR (phone IS NOT NULL AND phone = $1) LIMIT 1",
+    [identifier],
   );
   return rows[0];
 }

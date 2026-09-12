@@ -163,6 +163,54 @@ export const acceptLogisticsTicket = async (req, res) => {
   }
 };
 
+// Complete Logistics Delivery (Mark as Delivered)
+export const completeLogisticsTicket = async (req, res) => {
+  const provider_id = req.user.id;
+  const { ticket_id } = req.params;
+
+  try {
+    const checkRes = await pool.query(
+      `SELECT * FROM logistics_tickets WHERE ticket_id = $1 AND logistics_provider_id = $2`,
+      [ticket_id, provider_id]
+    );
+
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Ticket not found or unauthorized" });
+    }
+
+    const ticket = checkRes.rows[0];
+
+    await pool.query('BEGIN');
+
+    // Update ticket status to delivered
+    const updateRes = await pool.query(`
+      UPDATE logistics_tickets 
+      SET status = 'delivered', updated_at = NOW() 
+      WHERE ticket_id = $1 
+      RETURNING *
+    `, [ticket_id]);
+
+    // Update harvest batch status to delivered
+    await pool.query(`
+      UPDATE harvest_batches 
+      SET status = 'delivered', updated_at = NOW() 
+      WHERE batch_id = $1
+    `, [ticket.batch_id]);
+
+    await pool.query('COMMIT');
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Delivery confirmed. Batch arrived at destination.",
+      data: updateRes.rows[0] 
+    });
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    console.error("Error completing logistics delivery:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 // Get Logistics Settings
 export const getLogisticsSettings = async (req, res) => {
   const provider_id = req.user.id;

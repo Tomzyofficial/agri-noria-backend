@@ -8,7 +8,13 @@ const router = Router();
 router.get("/inspections", fieldOpsController.getInspections);
 router.post("/inspections", fieldOpsController.createInspection);
 
+router.get("/verifications", fieldOpsController.getVerifications);
+router.post("/verifications", fieldOpsController.createVerification);
+router.post("/verifications/:id/approve", fieldOpsController.approveVerification);
+router.post("/verifications/:id/reject", fieldOpsController.rejectVerification);
+
 router.get("/farmers", fieldOpsController.getFarmers);
+
 
 router.get("/schedule", fieldOpsController.getSchedules);
 router.post("/schedule", fieldOpsController.createSchedule);

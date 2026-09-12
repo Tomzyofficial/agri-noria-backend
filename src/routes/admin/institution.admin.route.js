@@ -29,6 +29,26 @@ institutionAdminRoute.get("/cooperatives", institutionAdminController.getCoopera
 institutionAdminRoute.get("/trial-plots", institutionAdminController.getTrialPlots);
 institutionAdminRoute.post("/trial-plots", institutionAdminController.createTrialPlot);
 
+// Organization Members (Cooperative / Producer Association)
+institutionAdminRoute.get("/members", institutionAdminController.getMembers);
+institutionAdminRoute.post("/members/import", institutionAdminController.importMember);
+
+// Polymorphic Groups (Member Clusters, Producer Groups, Research Cohorts)
+institutionAdminRoute.get("/groups", institutionAdminController.getGroups);
+institutionAdminRoute.post("/groups", institutionAdminController.createGroup);
+institutionAdminRoute.post("/groups/assign", institutionAdminController.assignGroupMember);
+
+// Producer Association Affiliations
+institutionAdminRoute.get("/affiliations", institutionAdminController.getAffiliations);
+institutionAdminRoute.post("/affiliations", institutionAdminController.affiliateCooperative);
+
+// Research Projects & Scientific Trials
+institutionAdminRoute.get("/research-projects", institutionAdminController.getResearchProjects);
+institutionAdminRoute.post("/research-projects", institutionAdminController.createResearchProject);
+institutionAdminRoute.post("/research-projects/funding", institutionAdminController.requestProjectFunding);
+institutionAdminRoute.get("/research-observations", institutionAdminController.getObservations);
+institutionAdminRoute.post("/research-observations", institutionAdminController.logObservation);
+
 // Treasury Wallet Credit
 institutionAdminRoute.get("/wallets", institutionAdminController.getEcosystemWallets);
 institutionAdminRoute.post("/treasury/credit-wallet", institutionAdminController.creditUserWallet);

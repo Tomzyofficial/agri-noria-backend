@@ -41,10 +41,21 @@ export const createInspection = async (data) => {
 // Farmers list for the dropdown
 export const getFarmersForDropdown = async () => {
     const query = `
-       SELECT fp.id as farmer_id, v.fname, v.lname, v.phone, fp.nin, f.boundary_polygon, f.farm_size_hectares
+       SELECT 
+          fp.id as farmer_id, 
+          v.fname, 
+          v.lname, 
+          TRIM(COALESCE(v.fname, '') || ' ' || COALESCE(v.lname, '')) as name,
+          v.phone, 
+          v.email,
+          fp.commodity,
+          fp.nin, 
+          f.boundary_polygon, 
+          COALESCE(fp.farm_size_hectares, f.farm_size_hectares) as farm_size_hectares
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN farms f ON v.id = f.vendor_id
+       ORDER BY v.fname ASC, v.lname ASC
     `;
     const { rows } = await pool.query(query);
     return rows;
@@ -279,3 +290,112 @@ export const enrollFarmerInProgram = async (farmerId, programId, enrolledBy) => 
     const { rows } = await pool.query(query, [farmerId, programId, enrolledBy]);
     return rows[0];
 };
+
+export const getVerifications = async () => {
+   const query = `
+      SELECT 
+         COALESCE(fv.id::text, fp.id::text) as id,
+         COALESCE(v.fname || ' ' || v.lname, 'Farmer') as "farmerName",
+         COALESCE(c.name, c.region, 'General Cluster') as "clusterName",
+         COALESCE(fv.timestamp_recorded, fp.created_at, NOW()) as "submissionDate",
+         UPPER(COALESCE(fv.status, fp.onboarding_status, 'PENDING')) as status,
+         4 as documents,
+         COALESCE(fv.notes, 'Farm verification pending field inspection') as notes,
+         COALESCE(fp.commodity, 'Crop Farming') as "cropType",
+         COALESCE(fp.farm_size_hectares::text || ' Ha', 'N/A') as "areaSize"
+      FROM farmer_profiles fp
+      JOIN vendors v ON fp.vendor_id = v.id
+      LEFT JOIN clusters c ON fp.cluster_id = c.id
+      LEFT JOIN field_verifications fv ON fp.id = fv.farmer_id
+      ORDER BY "submissionDate" DESC
+   `;
+   const { rows } = await pool.query(query);
+   return rows;
+};
+
+export const approveVerification = async (id) => {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      let farmerProfileId = null;
+
+      const fvRes = await client.query("SELECT * FROM field_verifications WHERE id::text = $1", [id]);
+      if (fvRes.rows.length > 0) {
+         farmerProfileId = fvRes.rows[0].farmer_id;
+         await client.query("UPDATE field_verifications SET status = 'APPROVED', timestamp_recorded = NOW() WHERE id::text = $1", [id]);
+      } else {
+         farmerProfileId = id;
+         await client.query(`
+            INSERT INTO field_verifications (farmer_id, status, notes, timestamp_recorded)
+            VALUES ($1, 'APPROVED', 'Verified by Field Operations', NOW())
+            ON CONFLICT DO NOTHING
+         `, [farmerProfileId]);
+      }
+
+      if (farmerProfileId) {
+         await client.query(`
+            UPDATE farmer_profiles 
+            SET onboarding_status = 'verified', certification_status = 'certified' 
+            WHERE id::text = $1
+         `, [farmerProfileId]);
+
+         await client.query(`
+            UPDATE vendors 
+            SET approval_status = 'approved' 
+            WHERE id = (SELECT vendor_id FROM farmer_profiles WHERE id::text = $1 LIMIT 1)
+         `, [farmerProfileId]);
+
+         await client.query(`
+            UPDATE farms 
+            SET verification_status = 'verified' 
+            WHERE vendor_id = (SELECT vendor_id FROM farmer_profiles WHERE id::text = $1 LIMIT 1)
+         `, [farmerProfileId]);
+      }
+
+      await client.query("COMMIT");
+      return { id, status: "APPROVED" };
+   } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+   } finally {
+      client.release();
+   }
+};
+
+export const rejectVerification = async (id, reason = "Verification requirements not met") => {
+   const client = await pool.connect();
+   try {
+      await client.query("BEGIN");
+      let farmerProfileId = null;
+
+      const fvRes = await client.query("SELECT * FROM field_verifications WHERE id::text = $1", [id]);
+      if (fvRes.rows.length > 0) {
+         farmerProfileId = fvRes.rows[0].farmer_id;
+         await client.query("UPDATE field_verifications SET status = 'REJECTED', notes = $2, timestamp_recorded = NOW() WHERE id::text = $1", [id, reason]);
+      } else {
+         farmerProfileId = id;
+         await client.query(`
+            INSERT INTO field_verifications (farmer_id, status, notes, timestamp_recorded)
+            VALUES ($1, 'REJECTED', $2, NOW())
+            ON CONFLICT DO NOTHING
+         `, [farmerProfileId, reason]);
+      }
+
+      if (farmerProfileId) {
+         await client.query(`
+            UPDATE farmer_profiles 
+            SET onboarding_status = 'rejected' 
+            WHERE id::text = $1
+         `, [farmerProfileId]);
+      }
+
+      await client.query("COMMIT");
+      return { id, status: "REJECTED" };
+   } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+   } finally {
+      client.release();
+   }
+};
+

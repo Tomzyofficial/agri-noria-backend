@@ -104,6 +104,14 @@ pipelineRoute.get("/pipeline/sales/cluster/:id", pipelineController.getClusterSa
 // Repayments
 pipelineRoute.post("/pipeline/repayments", pipelineController.createRepayment);
 pipelineRoute.patch("/pipeline/repayments/:id", pipelineController.processRepayment);
+pipelineRoute.get("/pipeline/repayments/mine", pipelineController.getMyRepayments);
+
+// Settlements (Waterfall & Off-take Payouts)
+pipelineRoute.post("/pipeline/settlements/calculate", pipelineController.calculateSettlement);
+pipelineRoute.get("/pipeline/settlements/pending", pipelineController.getPendingSettlements);
+pipelineRoute.get("/pipeline/settlements/all", pipelineController.getAllSettlements);
+pipelineRoute.get("/pipeline/settlements/mine", pipelineController.getMySettlements);
+pipelineRoute.post("/pipeline/settlements/:id/execute", pipelineController.executeSettlement);
 
 // Dashboard Stats
 pipelineRoute.get("/pipeline/stats", pipelineController.getStats);
