@@ -25,7 +25,7 @@ export async function releaseEligiblePendingBalances() {
          AND released = false
          AND created_at <= now() - ($1 || ' minutes')::interval
        ORDER BY created_at ASC
-       FOR UPDATE`,
+       FOR UPDATE SKIP LOCKED`,
       [HOLD_WINDOW_MINUTES.toString()],
     );
 
@@ -35,7 +35,7 @@ export async function releaseEligiblePendingBalances() {
       const walletResult = await client.query(
         `SELECT id, balance, pending_balance FROM marketplace_wallets
          WHERE id = $1
-         FOR UPDATE`,
+         FOR UPDATE SKIP LOCKED`,
         [row.wallet_id],
       );
 

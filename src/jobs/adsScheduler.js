@@ -64,9 +64,21 @@ async function runAdsScheduler() {
 }
 
 export const startAdsScheduler = async () => {
-  cron.schedule("*/1 * * * *", async () => {
+  let isRunning = false;
+
+  cron.schedule("*/5 * * * *", async () => {
+    if (isRunning) {
+      console.warn(
+        "[ads-scheduler] Previous run still in progress — skipping tick.",
+      );
+      return;
+    }
+
+    isRunning = true;
+
     try {
       const result = await runAdsScheduler();
+
       if (result.activated || result.expired) {
         console.log(
           `[ads-scheduler] activated=${result.activated} expired=${result.expired}`,
@@ -74,6 +86,8 @@ export const startAdsScheduler = async () => {
       }
     } catch (err) {
       console.error("[ads-scheduler] failed:", err);
+    } finally {
+      isRunning = false;
     }
   });
 };

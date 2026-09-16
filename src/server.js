@@ -142,9 +142,9 @@ app.set("io", io);
 
 server.listen(port, () => {
   console.log(`Server listening on ${port}`);
-  startPendingBalanceReleaseJob();
-  startWithdrawalReconciliationJob();
-  startAdsScheduler();
+  //   startPendingBalanceReleaseJob();
+  //   startWithdrawalReconciliationJob();
+  //   startAdsScheduler();
 });
 
 export default app;

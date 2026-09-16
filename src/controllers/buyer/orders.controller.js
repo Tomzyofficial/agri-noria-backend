@@ -42,6 +42,7 @@ const orderSchema = z.object({
 const ORDER_STATUSES = [
   "pending",
   "paid",
+  "processing",
   "shipped",
   "in_transit",
   "delivered",
@@ -234,14 +235,17 @@ export async function getBuyerOrdersController(req, res) {
   const payload = await verifyBuyerToken(req);
   try {
     if (!payload) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
         message: "Unauthorized",
       });
     }
 
-    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
-    const offset = parseInt(req.query.offset, 10) || 0;
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 10, 1),
+      100,
+    );
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const status = req.query.status?.trim();
 
     if (status && !ORDER_STATUSES.includes(status)) {
@@ -251,7 +255,7 @@ export async function getBuyerOrdersController(req, res) {
       });
     }
 
-    const orders = await getOrdersByBuyerId(payload.buyer_id, {
+    const { total, orders } = await getOrdersByBuyerId(payload.buyer_id, {
       status,
       limit,
       offset,
@@ -264,6 +268,8 @@ export async function getBuyerOrdersController(req, res) {
         limit,
         offset,
         count: orders.length,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
@@ -286,8 +292,11 @@ export async function getSellerOrdersController(req, res) {
       });
     }
 
-    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
-    const offset = parseInt(req.query.offset, 10) || 0;
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 10, 1),
+      100,
+    );
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const status = req.query.status?.trim();
 
     if (status && !ORDER_STATUSES.includes(status)) {
@@ -297,7 +306,7 @@ export async function getSellerOrdersController(req, res) {
       });
     }
 
-    const orders = await getOrdersBySellerId(payload.id, {
+    const { orders, total } = await getOrdersBySellerId(payload.id, {
       status: status,
       limit,
       offset,
@@ -310,6 +319,8 @@ export async function getSellerOrdersController(req, res) {
         limit,
         offset,
         count: orders.length,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
     });
   } catch (error) {

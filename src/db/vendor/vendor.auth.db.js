@@ -19,12 +19,22 @@ async function createUser(
   terms_of_service,
   workspace,
   role,
-  approval_status = "approved"
+  approval_status = "approved",
 ) {
   const { rows } = await pool.query(
     `INSERT INTO vendors (fname, lname, email, phone, pword, terms_of_service, workspace, role, approval_status) 
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [fname, lname, email, phone, pword, terms_of_service, workspace, role, approval_status],
+    [
+      fname,
+      lname,
+      email,
+      phone,
+      pword,
+      terms_of_service,
+      workspace,
+      role,
+      approval_status,
+    ],
   );
   return rows[0] || [];
 }
@@ -33,7 +43,7 @@ async function createFarmerProfile(vendorId, ain) {
   const { rows } = await pool.query(
     `INSERT INTO farmer_profiles (vendor_id, agricultural_identity_number, certification_status)
      VALUES ($1, $2, 'draft') RETURNING *`,
-    [vendorId, ain]
+    [vendorId, ain],
   );
   return rows[0] || [];
 }
@@ -48,17 +58,28 @@ async function checkVendorListingEligibility(id) {
     const data = rows[0];
     return { status: data.status, is_verified: data.is_verified };
   } catch {
-    return { status: false };
+    return { status: false, is_verified: false };
   }
 }
 
-async function createFieldOperationsDocuments(vendorId, appLetter, idCard, optDoc) {
+async function createFieldOperationsDocuments(
+  vendorId,
+  appLetter,
+  idCard,
+  optDoc,
+) {
   const { rows } = await pool.query(
     `INSERT INTO field_operations_documents (vendor_id, appointment_letter_url, id_card_url, optional_document_url)
      VALUES ($1, $2, $3, $4) RETURNING *`,
-    [vendorId, appLetter, idCard, optDoc]
+    [vendorId, appLetter, idCard, optDoc],
   );
   return rows[0] || null;
 }
 
-export { getUserByEmail, createUser, checkVendorListingEligibility, createFarmerProfile, createFieldOperationsDocuments };
+export {
+  getUserByEmail,
+  createUser,
+  checkVendorListingEligibility,
+  createFarmerProfile,
+  createFieldOperationsDocuments,
+};

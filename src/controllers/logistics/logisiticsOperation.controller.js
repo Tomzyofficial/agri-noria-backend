@@ -268,7 +268,7 @@ logisiticsOperation.getLogisticsOrders = async (req, res) => {
   }
 
   try {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
     const offset = parseInt(req.query.offset, 10) || 0;
     const status = req.query.status?.trim();
 
@@ -279,16 +279,22 @@ logisiticsOperation.getLogisticsOrders = async (req, res) => {
       });
     }
 
-    const orders = await getOrdersByLogisticsVendorId(payload.id, {
+    const { total, orders } = await getOrdersByLogisticsVendorId(payload.id, {
       status: status || undefined,
       limit,
       offset,
     });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: orders,
-      pagination: { limit, offset, count: orders.length },
+      pagination: {
+        limit,
+        offset,
+        count: orders.length,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     console.error("Error fetching logistics orders:", error);
@@ -679,18 +685,22 @@ logisiticsOperation.getQuoteRequests = async (req, res) => {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
-  const getQuote = await getQuoteRequests(payload.id);
-  if (!getQuote) {
-    return res
-      .status(404)
-      .json({ success: false, error: "No quote requests found" });
-  }
+  try {
+    const getQuote = await getQuoteRequests(payload.id);
+    if (!getQuote) {
+      return res
+        .status(404)
+        .json({ success: false, error: "No quote requests found" });
+    }
 
-  return res.status(200).json({
-    success: true,
-    quoteRequests: getQuote.quoteRequests,
-    allQuoteRequests: getQuote.allQuoteRequests,
-  });
+    return res.status(200).json({
+      success: true,
+      quoteRequests: getQuote.quoteRequests,
+      allQuoteRequests: getQuote.allQuoteRequests,
+    });
+  } catch (error) {
+    console.log(error);
+  }
 };
 
 logisiticsOperation.updateQuoteRequestStatus = async (req, res) => {
