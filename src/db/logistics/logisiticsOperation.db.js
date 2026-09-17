@@ -165,7 +165,7 @@ const LOGISTICS_ORDERS_BASE_JOIN = `
 /** Orders assigned to this logistics partner */
 export async function getOrdersByLogisticsVendorId(
   vendorId,
-  { status, limit = 50, offset = 0 } = {},
+  { status, limit = 10, offset = 0 } = {},
 ) {
   const params = [vendorId];
   let statusClause = "";
@@ -178,16 +178,41 @@ export async function getOrdersByLogisticsVendorId(
   params.push(limit, offset);
   const limitIdx = params.length - 1;
   const offsetIdx = params.length;
-
   const query = `
-     SELECT id, currency, country_code, status, delivery_address, created_at, metadata
-     ${LOGISTICS_ORDERS_BASE_JOIN}
-      ${statusClause}
-      ORDER BY created_at DESC
-      LIMIT $${limitIdx} OFFSET $${offsetIdx} 
-     `;
+       WITH logistics_orders AS (
+         SELECT o.*, ls.assigned_driver_name, ls.assigned_driver_phone
+          FROM orders o LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
+          WHERE metadata->'logistics_provider' @> jsonb_build_object('logistics_vendor_id', $1::text)
+         ${statusClause}
+         GROUP BY o.id, o.status, ls.assigned_driver_name, ls.assigned_driver_phone
+       )
+       SELECT logistics_orders.*, COUNT(*) OVER() AS total_count
+       FROM logistics_orders
+       ORDER BY created_at DESC
+        LIMIT $${limitIdx} OFFSET $${offsetIdx}
+       `;
   const result = await pool.query(query, params);
-  return result.rows;
+  const total = Number(result.rows[0]?.total_count ?? 0);
+  const orders = result.rows.map((order) => {
+    const orderData = { ...order };
+    delete orderData.total_count;
+    return orderData;
+  });
+
+  return { orders, total };
+
+  //   const limitIdx = params.length - 1;
+  //   const offsetIdx = params.length;
+
+  //   const query = `
+  //        SELECT id, currency, country_code, status, delivery_address, created_at, metadata
+  //        ${LOGISTICS_ORDERS_BASE_JOIN}
+  //         ${statusClause}
+  //         ORDER BY created_at DESC
+  //         LIMIT $${limitIdx} OFFSET $${offsetIdx}
+  //        `;
+  //   const result = await pool.query(query, params);
+  //   return result.rows;
 }
 
 /** Per-status counts for logistics partner dashboard overview */
@@ -198,12 +223,12 @@ export async function getLogisticsOrderStats(vendorId) {
       COUNT(*)::int AS total_orders,
       COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_orders,
       COUNT(*) FILTER (WHERE status = 'paid')::int AS paid_orders,
+      COUNT(*) FILTER (WHERE status = 'processing')::int AS processing_orders,
       COUNT(*) FILTER (WHERE status = 'in_transit')::int AS in_transit_orders,
       COUNT(*) FILTER (WHERE status = 'delivered')::int AS delivered_orders,
       COUNT(*) FILTER (WHERE status = 'completed')::int AS completed_orders,
       COUNT(*) FILTER (WHERE status = 'declined')::int AS declined_orders,
-      COUNT(*) FILTER (WHERE status = 'refunded')::int AS refunded_orders,
-      COALESCE(SUM((metadata->'amount_breakdown'->>'delivery_fee')::numeric), 0) AS total_delivery_revenue
+      COUNT(*) FILTER (WHERE status = 'refunded')::int AS refunded_orders
     ${LOGISTICS_ORDERS_BASE_JOIN}
     GROUP BY country_code, currency
   `;

@@ -8,7 +8,6 @@ import {
   deleteFileFromCloudinary,
   saveFileToCloudinary,
 } from "../../lib/cloudinary.img.js";
-import { AppError } from "../../utils/AppError.js";
 
 const droneController = {};
 

@@ -215,7 +215,7 @@ export async function createPayout(payouts, client) {
 // Get orders by buyer ID
 export async function getOrdersByBuyerId(
   buyerId,
-  { status, limit = 50, offset = 0 },
+  { status, limit = 2, offset = 0 },
 ) {
   const params = [buyerId];
   let statusClause = "";
@@ -228,19 +228,34 @@ export async function getOrdersByBuyerId(
   const limitIdx = params.length - 1;
   const offsetIdx = params.length;
   const query = `
-   SELECT o.*, ls.assigned_driver_name, ls.assigned_driver_phone FROM orders AS o
-   LEFT JOIN logistics_shipments ls ON o.id = ls.order_id WHERE o.buyer_id = $1
-   ${statusClause}
-    ORDER BY o.created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+   WITH buyer_orders AS (
+    SELECT o.*, ls.assigned_driver_name, ls.assigned_driver_phone
+    FROM orders o
+    LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
+    WHERE o.buyer_id = $1
+    ${statusClause}
+    GROUP BY o.id, o.status, ls.assigned_driver_name, ls.assigned_driver_phone
+  )
+  SELECT buyer_orders.*, COUNT(*) OVER() AS total_count
+  FROM buyer_orders
+  ORDER BY created_at DESC
+   LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
 
   const result = await pool.query(query, params);
-  return result.rows;
+  const total = Number(result.rows[0]?.total_count ?? 0);
+  const orders = result.rows.map((order) => {
+    const orderData = { ...order };
+    delete orderData.total_count;
+    return orderData;
+  });
+
+  return { orders, total };
 }
 
 // Get orders by seller ID
 export async function getOrdersBySellerId(
   sellerId,
-  { status, limit = 50, offset = 0 },
+  { status, limit = 10, offset = 0 },
 ) {
   const params = [sellerId];
   let statusClause = "";
@@ -254,25 +269,29 @@ export async function getOrdersBySellerId(
   const limitIdx = params.length - 1;
   const offsetIdx = params.length;
   const query = `
-  SELECT o.*, COUNT(*) as all_orders,
-      COUNT(CASE WHEN o.status = 'pending' THEN 1 END) as pending,
-      COUNT(CASE WHEN o.status = 'paid' THEN 1 END) as paid,
-      COUNT(CASE WHEN o.status = 'processing' THEN 1 END) as processing,
-      COUNT(CASE WHEN o.status = 'shipped' THEN 1 END) as shipped,
-      COUNT(CASE WHEN o.status = 'in_transit' THEN 1 END) as in_transit,
-      COUNT(CASE WHEN o.status = 'delivered' THEN 1 END) as delivered,
-      COUNT(CASE WHEN o.status = 'completed' THEN 1 END) as completed,
-      COUNT(CASE WHEN o.status = 'declined' THEN 1 END) as declined,
-      COUNT(CASE WHEN o.status = 'refunded' THEN 1 END) as refunded,
-      ls.assigned_driver_name, ls.assigned_driver_phone FROM orders o LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
-   WHERE o.metadata->'seller_breakdown' @> jsonb_build_array(
-    jsonb_build_object('seller_id', $1::text))
-   ${statusClause} GROUP BY o.id, ls.assigned_driver_name, ls.assigned_driver_phone
-   ORDER BY o.created_at DESC
+  WITH seller_orders AS (
+    SELECT o.*, ls.assigned_driver_name, ls.assigned_driver_phone
+    FROM orders o
+    LEFT JOIN logistics_shipments ls ON o.id = ls.order_id
+    WHERE o.metadata->'seller_breakdown' @> jsonb_build_array(
+      jsonb_build_object('seller_id', $1::text))
+    ${statusClause}
+    GROUP BY o.id, o.status, ls.assigned_driver_name, ls.assigned_driver_phone
+  )
+  SELECT seller_orders.*, COUNT(*) OVER() AS total_count
+  FROM seller_orders
+  ORDER BY created_at DESC
    LIMIT $${limitIdx} OFFSET $${offsetIdx}
   `;
   const result = await pool.query(query, params);
-  return result.rows;
+  const total = Number(result.rows[0]?.total_count ?? 0);
+  const orders = result.rows.map((order) => {
+    const orderData = { ...order };
+    delete orderData.total_count;
+    return orderData;
+  });
+
+  return { orders, total };
 }
 
 // Update order status
@@ -308,52 +327,25 @@ export async function updateOrderStatus(orderId, status) {
 
 // Get order statistics for seller/farmer dashboard overview
 export async function getSellerOrderStats(sellerId) {
-  const statsQuery = `
-    SELECT country_code, currency, COUNT(*) as total_orders,
-      COALESCE(SUM(CASE WHEN status = 'delivered' THEN (metadata->'amount_breakdown'->>'subtotal')::numeric ELSE 0 END), 0) as total_revenue
-    FROM orders
-    WHERE metadata->'seller_breakdown' @> jsonb_build_array(
-    jsonb_build_object('seller_id', $1::text))
-    GROUP BY 
-      country_code,
-      currency
-  `;
-
   // date_trunc function used to return the first ocurrance of the precision (month in this case)
-  const metric = `SELECT SUM(CASE WHEN created_at >= date_trunc('month', CURRENT_DATE)
-   THEN (metadata->'amount_breakdown'->>'subtotal')::numeric ELSE 0 END) AS current_month_sales,
-  SUM(CASE WHEN created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
-   AND created_at < date_trunc('month', CURRENT_DATE)
-   THEN (metadata->'amount_breakdown'->>'subtotal')::numeric ELSE 0 END) AS previous_month_sales
-   FROM orders
-   WHERE metadata->'seller_breakdown' @> jsonb_build_array(
-    jsonb_build_object('seller_id', $1::text));`;
+  //   const metric = `SELECT SUM(CASE WHEN mw.created_at >= date_trunc('month', CURRENT_DATE)
+  //    THEN (amount)::numeric ELSE 0 END) AS current_month_sales,
+  //   SUM(CASE WHEN mw.created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+  //    AND mw.created_at < date_trunc('month', CURRENT_DATE)
+  //    THEN (amount)::numeric ELSE 0 END) AS previous_month_sales
+  //    FROM marketplace_wallet_transactions mw JOIN marketplace_wallets w ON mw.wallet_id = w.id
+  //    WHERE w.owner_id = $1 AND mw.type = 'credit' AND mw.released = true`;
 
-  const activeBuyers = `
-    SELECT 
-      COUNT(DISTINCT buyer_id) as active_buyers
+  const stats = `
+    SELECT COUNT(DISTINCT buyer_id) as active_buyers, COUNT(*) as total_orders
     FROM orders
     WHERE metadata->'seller_breakdown' @> jsonb_build_array(
     jsonb_build_object('seller_id', $1::text))
   `;
 
-  const totalOrders = `SELECT COUNT(*) as total_orders FROM orders WHERE metadata->'seller_breakdown' @> jsonb_build_array(
-    jsonb_build_object('seller_id', $1::text))`;
+  const statsResult = await pool.query(stats, [sellerId]);
 
-  const [statsResult, metricResult, activeBuyersResult, totalOrdersResult] =
-    await Promise.all([
-      pool.query(statsQuery, [sellerId]),
-      pool.query(metric, [sellerId]),
-      pool.query(activeBuyers, [sellerId]),
-      pool.query(totalOrders, [sellerId]),
-    ]);
-  return {
-    ...statsResult.rows[0],
-    active_buyers: activeBuyersResult.rows[0].active_buyers,
-    current_month_sales: metricResult.rows[0].current_month_sales,
-    previous_month_sales: metricResult.rows[0].previous_month_sales,
-    total_orders: totalOrdersResult.rows[0].total_orders,
-  };
+  return { ...statsResult.rows[0] };
 }
 
 // Get order statistics for buyer
@@ -363,10 +355,12 @@ export async function getBuyerOrderStats(buyerId) {
       country_code, currency,
       COUNT(*) as total_orders,
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_orders,
-      COUNT(CASE WHEN status = 'in_transit' THEN 1 END) as in_transit_orders,
       COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_orders,
+      COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_orders,
+      COUNT(CASE WHEN status = 'in_transit' THEN 1 END) as in_transit_orders,
       COUNT(CASE WHEN status = 'delivered' THEN 1 END) as delivered_orders,
       COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_orders,
+      COUNT(CASE WHEN status = 'declined' THEN 1 END) as declined_orders,
       COUNT(CASE WHEN status = 'refunded' THEN 1 END) as refunded_orders,
       COALESCE(SUM(total_amount), 0) as total_spent
     FROM orders
