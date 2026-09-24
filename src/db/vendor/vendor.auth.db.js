@@ -4,10 +4,10 @@ import pool from "../../lib/connect.js";
 async function getUserByEmail(emailOrPhone) {
   const identifier = emailOrPhone ? String(emailOrPhone).trim() : "";
   const { rows } = await pool.query(
-    "SELECT id, email, fname, lname, phone, pword, workspace, role, is_suspended, onboarding_status, is_verified, onboarding_level FROM vendors WHERE LOWER(email) = LOWER($1) OR (phone IS NOT NULL AND phone = $1) LIMIT 1",
+    "SELECT id, email, fname, lname, phone, pword, workspace, role, is_active, is_suspended, onboarding_status, is_verified, onboarding_level FROM vendors WHERE LOWER(email) = LOWER($1) OR (phone IS NOT NULL AND phone = $1) LIMIT 1",
     [identifier],
   );
-  return rows[0];
+  return rows[0] || null;
 }
 
 // Create user
@@ -49,7 +49,7 @@ async function createFarmerProfile(vendorId, ain) {
   return rows[0] || [];
 }
 
-// Check if vendor has active subscription
+// Check if vendor has active subscription and is verified
 async function checkVendorListingEligibility(id) {
   try {
     const { rows } = await pool.query(

@@ -46,6 +46,7 @@ import bankroute from "./routes/bankAccount.route.js";
 import adsRoute from "./modules/ads/routes/ads.vendor.routes.js";
 import { startAdsScheduler } from "./jobs/adsScheduler.js";
 import adsPublicRoute from "./modules/ads/routes/ads.public.routes.js";
+import checkRouter from "./controllers/vendor/auth/check.route.js";
 
 const port = process.env.PORT || 5000;
 
@@ -73,6 +74,7 @@ const app = express()
   .use("/api/cart", cartOperationRoute)
   .use("/api", productListingRoute)
   .use("/api/vendor", profileRoute)
+  .use("/api/vendor/auth", checkRouter)
   .use("/api/summary", checkoutRoute)
   .use("/api/vendor", webhookRoute)
   .use("/api/vendor/subscription", subPlansRoute)

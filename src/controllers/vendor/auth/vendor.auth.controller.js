@@ -3,7 +3,7 @@ import {
   getUserByEmail,
   createUser,
   createFarmerProfile,
-  createFieldOperationsDocuments
+  createFieldOperationsDocuments,
 } from "../../../db/vendor/vendor.auth.db.js";
 import {
   createVendorSession,
@@ -61,6 +61,20 @@ vendorAuthController.signin = async (req, res) => {
     // Check if vendor exists
     const vendor = await getUserByEmail(normalizedEmail);
 
+    if (vendor && vendor.is_suspended) {
+      return res.status(403).json({
+        success: false,
+        error: ["Your account has been suspended. Please contact support."],
+      });
+    }
+
+    if (vendor && !vendor.is_active) {
+      return res.status(403).json({
+        success: false,
+        error: ["Your account is not active. Please contact support."],
+      });
+    }
+
     if (!vendor) {
       return res.status(404).json({
         success: false,
@@ -96,24 +110,25 @@ vendorAuthController.signin = async (req, res) => {
              onboarding_level = GREATEST(COALESCE(onboarding_level, 0), 2),
              updated_at = NOW() 
          WHERE id = $1`,
-        [vendor.id]
+        [vendor.id],
       );
       await pool.query(
         `UPDATE farmer_profiles 
          SET onboarding_status = CASE WHEN onboarding_status = 'pending' THEN 'completed' ELSE onboarding_status END,
              updated_at = NOW() 
          WHERE vendor_id = $1`,
-        [vendor.id]
+        [vendor.id],
       );
       await pool.query(
         `UPDATE farmer_organization_memberships 
          SET verification_status = 'verified',
              updated_at = NOW() 
          WHERE farmer_id IN (SELECT id FROM farmer_profiles WHERE vendor_id = $1)`,
-        [vendor.id]
+        [vendor.id],
       );
       vendor.is_verified = true;
-      if (vendor.onboarding_status === "pending") vendor.onboarding_status = "verified";
+      if (vendor.onboarding_status === "pending")
+        vendor.onboarding_status = "verified";
       vendor.onboarding_level = Math.max(vendor.onboarding_level || 0, 2);
     }
 
@@ -217,9 +232,15 @@ vendorAuthController.register = async (req, res) => {
   if (!workspace) errors.push("Workspace is required");
   if (!role) errors.push("Role is required");
 
-  const fieldOpsRoles = ["field officer", "agronomist", "inspector", "enumerator", "field operations supervisor"];
+  const fieldOpsRoles = [
+    "field officer",
+    "agronomist",
+    "inspector",
+    "enumerator",
+    "field operations supervisor",
+  ];
   const isFieldOps = role && fieldOpsRoles.includes(role.toLowerCase());
-  
+
   // Documents are now handled in the onboarding flow, not registration.
 
   if (errors.length > 0) {
@@ -268,7 +289,7 @@ vendorAuthController.register = async (req, res) => {
       terms_of_service,
       workspace,
       role,
-      approval_status
+      approval_status,
     );
 
     if (!newVendor) {
@@ -283,7 +304,7 @@ vendorAuthController.register = async (req, res) => {
         newVendor.id,
         appointment_letter_url,
         id_card_url,
-        optional_document_url
+        optional_document_url,
       );
     } else if (role.toLowerCase() === "farmer") {
       const year = new Date().getFullYear();
