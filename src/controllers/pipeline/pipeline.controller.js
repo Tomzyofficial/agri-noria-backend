@@ -125,7 +125,7 @@ pipelineController.enrollInProgram = async (req, res) => {
 
       if (cluster_id) {
          const { rows: clusterRows } = await pool.query(
-            "UPDATE clusters SET program_id = $1, updated_at = now() WHERE id = $2 RETURNING *",
+            "UPDATE clusters SET program_id = $1, program_enrollment_status = 'pending_verification', updated_at = now() WHERE id = $2 RETURNING *",
             [program_id, cluster_id]
          );
          if (!clusterRows[0]) return res.status(404).json({ success: false, error: "Cluster not found" });
@@ -137,7 +137,7 @@ pipelineController.enrollInProgram = async (req, res) => {
 
       // Update the farmer profile in db
       const { rows } = await pool.query(
-         "UPDATE farmer_profiles SET program_id = $1, updated_at = now() WHERE id = $2 RETURNING *",
+         "UPDATE farmer_profiles SET program_id = $1, program_enrollment_status = 'pending_verification', updated_at = now() WHERE id = $2 RETURNING *",
          [program_id, profile.id]
       );
 

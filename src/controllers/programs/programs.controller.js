@@ -276,4 +276,102 @@ programsController.createInputPackage = async (req, res) => {
    }
 };
 
+// Get pending and verified program enrollments for an institution's programs
+programsController.getInstitutionEnrollments = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { rows: farmers } = await pool.query(
+         `SELECT fp.id as farmer_profile_id, fp.vendor_id, fp.farm_size_hectares, fp.commodity,
+                 COALESCE(fp.program_enrollment_status, 'pending_verification') as enrollment_status,
+                 fp.updated_at as enrolled_at,
+                 v.fname, v.lname, v.email, v.phone,
+                 p.id as program_id, p.name as program_name, p.commodity as program_commodity
+          FROM farmer_profiles fp
+          JOIN programs p ON fp.program_id = p.id
+          JOIN vendors v ON fp.vendor_id = v.id
+          WHERE p.created_by = $1
+          ORDER BY fp.updated_at DESC`,
+         [payload.id]
+      );
+
+      const { rows: clusters } = await pool.query(
+         `SELECT c.id as cluster_id, c.name as cluster_name, c.region,
+                 COALESCE(c.program_enrollment_status, 'pending_verification') as enrollment_status,
+                 c.updated_at as enrolled_at,
+                 v.fname as supervisor_fname, v.lname as supervisor_lname, v.phone as supervisor_phone,
+                 p.id as program_id, p.name as program_name, p.commodity as program_commodity,
+                 (SELECT COUNT(*) FROM cluster_members cm WHERE cm.cluster_id = c.id) as farmer_count
+          FROM clusters c
+          JOIN programs p ON c.program_id = p.id
+          LEFT JOIN vendors v ON c.supervisor_id = v.id
+          WHERE p.created_by = $1
+          ORDER BY c.updated_at DESC`,
+         [payload.id]
+      );
+
+      return res.status(200).json({
+         success: true,
+         data: {
+            farmers,
+            clusters,
+         },
+      });
+   } catch (error) {
+      console.error("Error fetching institution enrollments:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch enrollments" });
+   }
+};
+
+// Verify or reject a farmer or cluster's program enrollment
+programsController.verifyEnrollment = async (req, res) => {
+   try {
+      const payload = await verifyVendorToken(req);
+      if (!payload) return res.status(401).json({ success: false, error: "Unauthorized" });
+
+      const { type, id, status } = req.body;
+      if (!type || !id || !status) {
+         return res.status(400).json({ success: false, error: "Type, id, and status are required" });
+      }
+
+      if (!['verified', 'rejected', 'pending_verification'].includes(status)) {
+         return res.status(400).json({ success: false, error: "Invalid status value" });
+      }
+
+      if (type === 'farmer') {
+         const { rows } = await pool.query(
+            `UPDATE farmer_profiles fp
+             SET program_enrollment_status = $1, updated_at = now()
+             FROM programs p
+             WHERE fp.id = $2 AND fp.program_id = p.id AND p.created_by = $3
+             RETURNING fp.*`,
+            [status, id, payload.id]
+         );
+         if (!rows[0]) {
+            return res.status(404).json({ success: false, error: "Enrollment not found or unauthorized" });
+         }
+         return res.status(200).json({ success: true, message: `Farmer enrollment marked as ${status}`, data: rows[0] });
+      } else if (type === 'cluster') {
+         const { rows } = await pool.query(
+            `UPDATE clusters c
+             SET program_enrollment_status = $1, updated_at = now()
+             FROM programs p
+             WHERE c.id = $2 AND c.program_id = p.id AND p.created_by = $3
+             RETURNING c.*`,
+            [status, id, payload.id]
+         );
+         if (!rows[0]) {
+            return res.status(404).json({ success: false, error: "Enrollment not found or unauthorized" });
+         }
+         return res.status(200).json({ success: true, message: `Cluster enrollment marked as ${status}`, data: rows[0] });
+      } else {
+         return res.status(400).json({ success: false, error: "Invalid type. Must be 'farmer' or 'cluster'" });
+      }
+   } catch (error) {
+      console.error("Error verifying enrollment:", error);
+      return res.status(500).json({ success: false, error: "Failed to verify enrollment" });
+   }
+};
+
 export default programsController;

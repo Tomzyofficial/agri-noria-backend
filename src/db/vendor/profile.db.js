@@ -53,6 +53,12 @@ export async function upsertVendorDocuments(
           license_url ?? null,
         ],
       );
+      if (business_name) {
+        await pool.query(
+          "UPDATE vendors SET company_name = $2 WHERE id = $1",
+          [vendor_id, business_name],
+        );
+      }
       return updated.rows[0];
     } else {
       const inserted = await pool.query(
@@ -70,10 +76,10 @@ export async function upsertVendorDocuments(
         ],
       );
 
-      // Sync onboarding_status to vendors table
+      // Sync onboarding_status and company_name to vendors table
       await pool.query(
-        "UPDATE vendors SET onboarding_status = 'completed' WHERE id = $1",
-        [vendor_id],
+        "UPDATE vendors SET onboarding_status = 'completed', company_name = COALESCE($2, company_name) WHERE id = $1",
+        [vendor_id, business_name || null],
       );
 
       return inserted.rows[0];
@@ -127,16 +133,127 @@ export async function upsertVendorBankAccount(
   }
 }
 
-// Get the vendor's documents row per vendor_id
+// Get the vendor's documents row per vendor_id with fallbacks to registration and ecosystem data
 export async function getVendorProfileInfo(id) {
-  const { rows } = await pool.query(
-    "SELECT business_name, hot_line_phone_number, address, business_desc, id_front_status, id_back_status, license_status FROM vendor_documents WHERE vendor_id = $1 ORDER BY id ASC LIMIT 1",
-    [id],
-  );
+  try {
+    const { rows } = await pool.query(
+      `SELECT 
+          v.id,
+          v.fname,
+          v.lname,
+          v.email,
+          v.phone,
+          v.company_name,
+          v.role,
+          v.workspace,
+          v.is_verified,
+          v.onboarding_status,
+          v.profile_image_url,
+          cu.state_name,
+          cu.country_name,
+          cu.country_code,
+          cu.currency,
+          vd.id as document_id,
+          vd.business_name as doc_business_name,
+          vd.hot_line_phone_number as doc_phone,
+          vd.address as doc_address,
+          vd.business_desc as doc_business_desc,
+          vd.id_front_status,
+          vd.id_back_status,
+          vd.license_status,
+          vd.id_front_url,
+          vd.id_back_url,
+          vd.license_url,
+          (SELECT f.farm_name FROM farms f WHERE f.vendor_id = v.id ORDER BY f.id DESC LIMIT 1) as farm_name,
+          (SELECT sf.listing_name FROM storage_facility sf WHERE sf.account_id = v.id ORDER BY sf.id DESC LIMIT 1) as facility_name,
+          (SELECT veh.title FROM vehicles veh WHERE veh.vendor_id = v.id ORDER BY veh.id DESC LIMIT 1) as vehicle_title
+       FROM vendors v
+       LEFT JOIN country_utils cu ON cu.vendor_id = v.id
+       LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
+       WHERE v.id = $1
+       ORDER BY vd.id ASC NULLS LAST
+       LIMIT 1`,
+      [id],
+    );
 
-  const result = rows?.[0] || null;
+    const v = rows?.[0];
+    if (!v) {
+      return {
+        success: false,
+        data: {
+          rows: null,
+          id_front_status: null,
+          id_back_status: null,
+          license_status: null,
+          business_name: null,
+          hot_line_phone_number: null,
+          address: null,
+          business_desc: null,
+        },
+      };
+    }
 
-  if (!result) {
+    // Derive business_name from documents, company_name, specialized tables, or user full name
+    const fullName = [v.fname, v.lname].filter(Boolean).join(" ").trim();
+    const business_name =
+      v.doc_business_name ||
+      v.company_name ||
+      v.farm_name ||
+      v.facility_name ||
+      v.vehicle_title ||
+      (fullName ? `${fullName} Enterprise` : "Agri-Noria Partner");
+
+    // Derive phone number
+    const hot_line_phone_number = v.doc_phone || v.phone || "";
+
+    // Derive address from documents or state/country
+    const derivedLocation = [v.state_name, v.country_name].filter(Boolean).join(", ");
+    const address = v.doc_address || derivedLocation || "Nigeria";
+
+    // Derive professional description based on role
+    const roleName = v.role ? v.role.charAt(0).toUpperCase() + v.role.slice(1) : "Partner";
+    const defaultDesc = `${roleName} operating on the Agri-Noria platform. Providing agricultural and supply chain services.`;
+    const business_desc = v.doc_business_desc || defaultDesc;
+
+    // Derive document verification status based on vendor verification
+    const isVerified = v.is_verified === true || v.onboarding_status === "verified" || v.onboarding_status === "completed";
+    const defaultDocStatus = isVerified ? "approved" : "pending";
+
+    const id_front_status = v.id_front_status || defaultDocStatus;
+    const id_back_status = v.id_back_status || defaultDocStatus;
+    const license_status = v.license_status || defaultDocStatus;
+
+    return {
+      success: true,
+      data: {
+        rows: {
+          id_front_status,
+          id_back_status,
+          license_status,
+          business_name,
+          hot_line_phone_number,
+          address,
+          business_desc,
+        },
+        id_front_status,
+        id_back_status,
+        license_status,
+        business_name,
+        hot_line_phone_number,
+        address,
+        business_desc,
+        fname: v.fname,
+        lname: v.lname,
+        email: v.email,
+        phone: v.phone,
+        company_name: v.company_name,
+        role: v.role,
+        workspace: v.workspace,
+        is_verified: isVerified,
+      },
+    };
+  } catch (error) {
+    console.error("Database error in getVendorProfileInfo:", error);
     return {
       success: false,
       data: {
@@ -151,20 +268,6 @@ export async function getVendorProfileInfo(id) {
       },
     };
   }
-
-  return {
-    success: true,
-    data: {
-      rows: result,
-      id_front_status: result.id_front_status,
-      id_back_status: result.id_back_status,
-      license_status: result.license_status,
-      business_name: result.business_name,
-      hot_line_phone_number: result.hot_line_phone_number,
-      address: result.address,
-      business_desc: result.business_desc,
-    },
-  };
 }
 
 // Check for verified vendor

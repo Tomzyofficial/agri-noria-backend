@@ -8,6 +8,11 @@ export const getInspections = async () => {
          fv.status,
          fv.timestamp_recorded as date,
          fv.notes,
+         fv.latitude,
+         fv.longitude,
+         fv.geospatial_metadata,
+         fv.image_urls,
+         fv.video_url,
          fp.commodity as "cropType",
          fp.farm_size_hectares as "areaSize",
          v.fname || ' ' || v.lname as "farmerName",
@@ -28,21 +33,37 @@ export const getInspections = async () => {
 };
 
 export const createInspection = async (data) => {
-   const { farmer_id, officer_id, cluster_id, status, notes } = data;
+   const { farmer_id, officer_id, cluster_id, status, notes, latitude, longitude, geospatial_metadata, image_urls, video_url } = data;
    const query = `
-      INSERT INTO field_verifications (farmer_id, officer_id, cluster_id, status, notes, timestamp_recorded)
-      VALUES ($1, $2, $3, $4, $5, NOW())
+      INSERT INTO field_verifications (
+         farmer_id, officer_id, cluster_id, status, notes, 
+         latitude, longitude, geospatial_metadata, image_urls, video_url, 
+         timestamp_recorded
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
       RETURNING *
    `;
-   const { rows } = await pool.query(query, [farmer_id, officer_id || null, cluster_id || null, status, notes]);
+   const { rows } = await pool.query(query, [
+      farmer_id,
+      officer_id || null,
+      cluster_id || null,
+      status || 'verified',
+      notes || null,
+      latitude ? parseFloat(latitude) : null,
+      longitude ? parseFloat(longitude) : null,
+      geospatial_metadata ? JSON.stringify(geospatial_metadata) : '{}',
+      image_urls && Array.isArray(image_urls) ? image_urls : [],
+      video_url || null
+   ]);
    return rows[0];
 };
 
-// Farmers list for the dropdown
-export const getFarmersForDropdown = async () => {
-    const query = `
+// Farmers list for the dropdown - filtered by registering officer
+export const getFarmersForDropdown = async (officerId = null, role = null) => {
+    let query = `
        SELECT 
           fp.id as farmer_id, 
+          v.id as vendor_id,
           v.fname, 
           v.lname, 
           TRIM(COALESCE(v.fname, '') || ' ' || COALESCE(v.lname, '')) as name,
@@ -50,16 +71,27 @@ export const getFarmersForDropdown = async () => {
           v.email,
           fp.commodity,
           fp.nin, 
+          fp.agricultural_identity_number as ain,
           f.boundary_polygon, 
-          COALESCE(fp.farm_size_hectares, f.farm_size_hectares) as farm_size_hectares
+          COALESCE(fp.farm_size_hectares, f.farm_size_hectares) as farm_size_hectares,
+          COALESCE(fp.registered_by, v.registered_by) as registered_by
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
        LEFT JOIN farms f ON v.id = f.vendor_id
-       ORDER BY v.fname ASC, v.lname ASC
     `;
-    const { rows } = await pool.query(query);
+    const params = [];
+    const normalizedRole = role?.toLowerCase();
+    const isSupervisorOrAdmin = ["super admin", "admin", "program director", "regional manager"].includes(normalizedRole);
+    
+    if (officerId && !isSupervisorOrAdmin) {
+       query += ` WHERE (fp.registered_by = $1 OR v.registered_by = $1)`;
+       params.push(officerId);
+    }
+    
+    query += ` ORDER BY v.fname ASC, v.lname ASC`;
+    const { rows } = await pool.query(query, params);
     return rows;
-}
+};
 
 // Schedules
 export const getSchedules = async () => {

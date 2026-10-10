@@ -19,7 +19,11 @@ import {
   getIncomingTickets,
   acceptStorageTicket,
   updateStorageSettings,
-  issueNwrReceipt
+  issueNwrReceipt,
+  getStorageCalendar,
+  addStorageCalendarSchedule,
+  updateStorageCalendarSchedule,
+  deleteStorageCalendarSchedule
 } from "../../controllers/vendor/commodity-operations/storage.controller.js";
 
 const router = express.Router();
@@ -46,6 +50,12 @@ router.get("/storage/tickets", getIncomingTickets);
 router.post("/storage/tickets/:ticket_id/accept", acceptStorageTicket);
 router.post("/storage/tickets/:ticket_id/issue-nwr", issueNwrReceipt);
 router.post("/storage/settings", updateStorageSettings);
+
+// Storage Availability Calendar Routes
+router.get("/storage/calendar", getStorageCalendar);
+router.post("/storage/calendar", addStorageCalendarSchedule);
+router.patch("/storage/calendar/:id", updateStorageCalendarSchedule);
+router.delete("/storage/calendar/:id", deleteStorageCalendarSchedule);
 
 // Logistics Provider Routes
 import {

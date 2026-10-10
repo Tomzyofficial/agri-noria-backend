@@ -5,13 +5,15 @@ const imageFileTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
 const vehicleUploadSchema = z.object({
   image: z
     .any()
+    .optional()
+    .nullable()
     .refine(
-      (files) => files && files.length > 0,
-      "At least one image file is required",
+      (files) => !files || files.length <= 5,
+      "Maximum 5 images allowed",
     )
-    .refine((files) => files?.length <= 5, "Maximum 5 images allowed")
     .refine(
       (files) =>
+        !files ||
         Array.from(files).every((file) =>
           imageFileTypes.includes(file.mimetype),
         ),
@@ -19,6 +21,7 @@ const vehicleUploadSchema = z.object({
     )
     .refine(
       (files) =>
+        !files ||
         Array.from(files).every((file) => file.size <= 5 * 1024 * 1024),
       "Each image must not exceed 5MB",
     ),
@@ -85,6 +88,18 @@ const vehicleUploadSchema = z.object({
   rate_amount: z.coerce
     .number({ invalid_type_error: "Rate amount must be a number." })
     .nonnegative({ message: "Rate amount cannot be negative." }),
+
+  base_amount: z.coerce
+    .number()
+    .nonnegative()
+    .optional()
+    .nullable(),
+
+  max_tons: z.coerce
+    .number()
+    .positive()
+    .optional()
+    .nullable(),
 });
 
 export default vehicleUploadSchema;

@@ -259,7 +259,7 @@ async function getFarmerProfileByVendor(vendorId) {
               f.farm_entrance_photo_url,
               f.farm_interior_photo_url,
               f.crop_photo_url,
-              v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, p.commodity as program_commodity, p.target_hectares as program_target_hectares, cm.cluster_id,
+              v.fname, v.lname, v.email, v.phone, v.is_verified as vendor_is_verified, v.approval_status as vendor_approval_status, v.onboarding_status as vendor_onboarding_status, v.onboarding_level as vendor_onboarding_level, p.name as program_name, p.start_date as program_start_date, p.end_date as program_end_date, p.commodity as program_commodity, p.target_hectares as program_target_hectares, cm.cluster_id,
               (
                  SELECT json_build_object(
                     'id', v_org.id,
@@ -306,7 +306,7 @@ async function getAllFarmerProfiles(institutionId, role) {
               (SELECT string_agg(p.name, ', ') FROM farmer_programmes fpm JOIN programs p ON fpm.program_id = p.id WHERE fpm.farmer_id = fp.id) as program_name
        FROM farmer_profiles fp
        JOIN vendors v ON fp.vendor_id = v.id
-       WHERE LOWER(v.workspace) = 'ecosystem' ${roleFilter}
+       WHERE (LOWER(v.workspace) = 'ecosystem' OR LOWER(v.role) = 'farmer') ${roleFilter}
        ORDER BY fp.created_at DESC`,
        params
    );
@@ -352,15 +352,15 @@ async function getAllClusters() {
       `SELECT c.*, v.fname || ' ' || v.lname as supervisor_name, p.name as program_name, p.created_by as program_created_by, rp.institution_id as project_institution_id,
        (SELECT COUNT(*) FROM cluster_members cm WHERE cm.cluster_id = c.id) as farmer_count,
        COALESCE((SELECT SUM(fp.farm_size_hectares) FROM farmer_profiles fp JOIN cluster_members cm ON fp.id = cm.farmer_id WHERE cm.cluster_id = c.id), 0) as total_hectares,
-       EXISTS(SELECT 1 FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved')) as has_pending_request,
-       (SELECT funds_status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_funds_status,
-       (SELECT items_status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_items_status,
-       (SELECT status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as request_status,
-       (SELECT id FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY created_at DESC LIMIT 1) as pending_request_id,
+       EXISTS(SELECT 1 FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved', 'distributed')) as has_pending_request,
+       (SELECT funds_status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved', 'distributed') ORDER BY created_at DESC LIMIT 1) as request_funds_status,
+       (SELECT items_status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved', 'distributed') ORDER BY created_at DESC LIMIT 1) as request_items_status,
+       (SELECT status FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved', 'distributed') ORDER BY created_at DESC LIMIT 1) as request_status,
+       (SELECT id FROM input_requests ir WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved', 'distributed') ORDER BY created_at DESC LIMIT 1) as pending_request_id,
        (SELECT w.balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_balance,
        (SELECT w.locked_balance FROM wallets w WHERE w.owner_id = c.id AND w.owner_type = 'cluster' LIMIT 1) as wallet_locked_balance,
-       (SELECT dv.fname || ' ' || dv.lname FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY ir.created_at DESC LIMIT 1) as distributor_name,
-       (SELECT dv.phone FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved') ORDER BY ir.created_at DESC LIMIT 1) as distributor_phone
+       (SELECT dv.fname || ' ' || dv.lname FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved', 'distributed') ORDER BY ir.created_at DESC LIMIT 1) as distributor_name,
+       (SELECT dv.phone FROM input_requests ir JOIN vendors dv ON ir.distributor_id = dv.id WHERE ir.cluster_id = c.id AND ir.status IN ('pending', 'items_selected', 'approved', 'distributed') ORDER BY ir.created_at DESC LIMIT 1) as distributor_phone
        FROM clusters c
        LEFT JOIN vendors v ON c.supervisor_id = v.id
        LEFT JOIN programs p ON c.program_id = p.id
@@ -396,7 +396,7 @@ async function getEligibleFarmersForCluster(programId, clusterId) {
       query += ` FROM farmer_profiles fp JOIN vendors v ON fp.vendor_id = v.id`;
    }
 
-   query += ` WHERE LOWER(v.workspace) = 'ecosystem'`;
+   query += ` WHERE (LOWER(v.workspace) = 'ecosystem' OR LOWER(v.role) = 'farmer')`;
 
    if (clusterId && clusterId !== 'null' && clusterId !== 'undefined') {
       query += ` AND NOT EXISTS (
@@ -780,7 +780,11 @@ async function confirmInputDelivery(requestId, userId) {
       const request = reqRes.rows[0];
 
       if (!request) throw new Error("Input request not found");
-      if (request.items_status === 'confirmed_delivered') throw new Error("Input request delivery already confirmed");
+      if (request.items_status === 'confirmed_delivered') {
+         // Idempotent return if already confirmed
+         await client.query("COMMIT");
+         return request;
+      }
 
       // Mark as confirmed_delivered and distributed
       const updateRes = await client.query(
@@ -791,15 +795,27 @@ async function confirmInputDelivery(requestId, userId) {
          [requestId]
       );
 
-      // Update distribution record
-      await client.query(
-         `UPDATE input_distributions 
-          SET delivery_status = 'delivered', delivered_at = now() 
-          WHERE request_id = $1`,
+      // Ensure distribution record exists and is marked delivered
+      const distCheck = await client.query(
+         `SELECT id FROM input_distributions WHERE request_id = $1 LIMIT 1`,
          [requestId]
       );
+      if (distCheck.rows.length > 0) {
+         await client.query(
+            `UPDATE input_distributions 
+             SET delivery_status = 'delivered', delivered_at = now(), distribution_date = COALESCE(distribution_date, now()) 
+             WHERE request_id = $1`,
+            [requestId]
+         );
+      } else {
+         await client.query(
+            `INSERT INTO input_distributions (request_id, farmer_id, package_id, delivery_status, delivered_at, distribution_date)
+             VALUES ($1, $2, $3, 'delivered', now(), now())`,
+            [requestId, request.farmer_id || null, request.package_id || null]
+         );
+      }
 
-      // Ensure repayment obligation exists
+      // Ensure repayment obligation exists if for a specific farmer
       if (request.farmer_id) {
          await client.query(`
             INSERT INTO repayments (farmer_id, input_request_id, financing_amount, recovered_amount, balance, status)
@@ -1112,7 +1128,7 @@ async function getPipelineStats(userId, userRole) {
    try {
       const isSupervisor = userRole && userRole.toLowerCase() === 'cluster supervisor';
 
-      let farmersQuery = "SELECT COUNT(*) as count FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem'";
+      let farmersQuery = "SELECT COUNT(*) as count FROM vendors WHERE LOWER(role) = 'farmer'";
 
       if (isSupervisor) {
          farmersQuery = `SELECT COUNT(DISTINCT v.id) as count FROM vendors v 

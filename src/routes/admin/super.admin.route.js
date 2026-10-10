@@ -6,6 +6,8 @@ const superAdminRoute = express.Router();
 // User Management
 superAdminRoute.get("/admin/users", requireSuperAdmin, superAdminController.getAllUsers);
 superAdminRoute.patch("/admin/users/toggle-suspension", requireSuperAdmin, superAdminController.toggleSuspension);
+superAdminRoute.patch("/admin/users/approval", requireSuperAdmin, superAdminController.setApprovalStatus);
+superAdminRoute.patch("/admin/users/:id/approval", requireSuperAdmin, superAdminController.setApprovalStatus);
 
 // Dashboard & Statistics
 superAdminRoute.get("/admin/dashboard/stats", requireFinanceOrAdmin, superAdminController.getDashboardStats);

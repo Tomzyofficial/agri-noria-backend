@@ -13,7 +13,7 @@ router.post("/verifications", fieldOpsController.createVerification);
 router.post("/verifications/:id/approve", fieldOpsController.approveVerification);
 router.post("/verifications/:id/reject", fieldOpsController.rejectVerification);
 
-router.get("/farmers", fieldOpsController.getFarmers);
+router.get("/farmers", requireVendorAuth, fieldOpsController.getFarmers);
 
 
 router.get("/schedule", fieldOpsController.getSchedules);

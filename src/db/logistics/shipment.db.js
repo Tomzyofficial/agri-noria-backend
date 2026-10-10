@@ -221,8 +221,11 @@ export async function startShipmentTransaction(data) {
         pickup_location,
         delivery_location,
         status,
-        shipment_started_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        shipment_started_at,
+        pickup_latitude,
+        pickup_longitude,
+        pickup_geospatial_metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *
     `;
 
@@ -243,6 +246,9 @@ export async function startShipmentTransaction(data) {
       data.delivery_location || order.delivery_address,
       "in_transit",
       new Date(),
+      data.pickup_latitude ? parseFloat(data.pickup_latitude) : null,
+      data.pickup_longitude ? parseFloat(data.pickup_longitude) : null,
+      data.pickup_geospatial_metadata ? (typeof data.pickup_geospatial_metadata === 'string' ? data.pickup_geospatial_metadata : JSON.stringify(data.pickup_geospatial_metadata)) : null,
     ];
 
     const shipmentResult = await client.query(shipmentQuery, shipmentValues);
