@@ -30,6 +30,9 @@ export async function verifyVendor(req, res) {
     // Use the unified onboarding_status from the vendors table
     const onboardingStatus = user?.onboarding_status || "pending";
     const isVerified = user?.is_verified === true || onboardingStatus === "verified" || onboardingStatus === "completed" || (user?.onboarding_level >= 2);
+    // Use active workspace context if provided by proxy/client, otherwise default to payload or user workspace
+    const activeWorkspace = req.headers["x-active-workspace"] || payload.workspace || user?.workspace || "ecosystem";
+
     return res.status(200).json({
       authenticated: true,
       userId: payload.id,
@@ -37,8 +40,10 @@ export async function verifyVendor(req, res) {
       lname: user?.lname || payload.lname,
       phone: user?.phone || payload.phone || "",
       email: payload.email,
-      workspace: payload.workspace,
-      role: payload.role,
+      workspace: activeWorkspace,
+      registered_workspace: user?.workspace || payload.workspace,
+      role: payload.role || user?.role,
+      approval_status: user?.approval_status || payload.approval_status || "pending_approval",
       onboarding_status: onboardingStatus,
       onboarding_level: user?.onboarding_level || 0,
       is_verified: isVerified,

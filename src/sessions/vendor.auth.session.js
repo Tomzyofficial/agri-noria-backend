@@ -32,12 +32,6 @@ export async function createVendorSession(res, { user, rememberMe = false }) {
     .setExpirationTime(expiresIn)
     .sign(encodedKey);
 
-  // Dynamically assign cookie name based on workspace
-  const activeCookieName =
-    user.workspace === "marketplace"
-      ? "marketplace-session"
-      : "ecosystem-session";
-
   // Configure cookie for cross-origin support in production
   const cookieConfig = {
     httpOnly: true,
@@ -46,7 +40,12 @@ export async function createVendorSession(res, { user, rememberMe = false }) {
     path: "/",
     maxAge: maxAgeMs,
   };
-  res.cookie(activeCookieName, token, cookieConfig);
+
+  // Set cookies for both workspaces and legacy vendor-session so the session is unified
+  res.cookie("marketplace-session", token, cookieConfig);
+  res.cookie("ecosystem-session", token, cookieConfig);
+  res.cookie(COOKIE_NAME, token, cookieConfig);
+
   return token;
 }
 
@@ -60,10 +59,28 @@ export async function verifyVendorToken(req) {
     const activeCookieName =
       workspace === "marketplace" ? "marketplace-session" : "ecosystem-session";
 
-    let token = req.cookies?.[activeCookieName];
+    let token =
+      req.cookies?.[activeCookieName] ||
+      req.cookies?.["vendor-session"] ||
+      req.cookies?.["marketplace-session"] ||
+      req.cookies?.["ecosystem-session"];
 
-    // Fallback for old cookie structure
-    if (!token) token = req.cookies?.[COOKIE_NAME];
+    if (!token && req.headers?.cookie) {
+      const parsedCookies = {};
+      req.headers.cookie.split(";").forEach((cookieStr) => {
+        const parts = cookieStr.split("=");
+        if (parts.length >= 2) {
+          const name = parts[0].trim();
+          const val = parts.slice(1).join("=").trim();
+          parsedCookies[name] = val;
+        }
+      });
+      token =
+        parsedCookies[activeCookieName] ||
+        parsedCookies["vendor-session"] ||
+        parsedCookies["marketplace-session"] ||
+        parsedCookies["ecosystem-session"];
+    }
 
     if (!token && req.headers.authorization?.startsWith("Bearer ")) {
       token = req.headers.authorization.split(" ")[1];
@@ -97,10 +114,9 @@ export function deleteVendorSession(res) {
     path: "/",
   };
 
-  // Get active workspace context to clear correct cookie
-  // Note: we'll default to clearing both if workspace is unknown, but preferably we clear the targeted one
+  // Clear all workspace and legacy cookies
   res.clearCookie("marketplace-session", cookieConfig);
   res.clearCookie("ecosystem-session", cookieConfig);
-  res.clearCookie(COOKIE_NAME, cookieConfig); // clear legacy cookie just in case
+  res.clearCookie(COOKIE_NAME, cookieConfig);
   return true;
 }

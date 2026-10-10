@@ -16,9 +16,20 @@ export const getInspections = async (req, res) => {
 
 export const createInspection = async (req, res) => {
    try {
-      const { farmer_id, cluster_id, status, notes } = req.body;
+      const { farmer_id, cluster_id, status, notes, latitude, longitude, geospatial_metadata, image_urls, video_url } = req.body;
       const officer_id = req.user?.id || req.body.officer_id;
-      const newInspection = await fieldOpsDb.createInspection({ farmer_id, officer_id, cluster_id, status, notes });
+      const newInspection = await fieldOpsDb.createInspection({ 
+         farmer_id, 
+         officer_id, 
+         cluster_id, 
+         status, 
+         notes, 
+         latitude, 
+         longitude, 
+         geospatial_metadata, 
+         image_urls, 
+         video_url 
+      });
       res.status(201).json({ success: true, data: newInspection });
    } catch (error) {
       console.error("Error creating inspection:", error);
@@ -28,13 +39,15 @@ export const createInspection = async (req, res) => {
 
 export const getFarmers = async (req, res) => {
     try {
-        const farmers = await fieldOpsDb.getFarmersForDropdown();
+        const officerId = req.user?.id;
+        const role = req.user?.role;
+        const farmers = await fieldOpsDb.getFarmersForDropdown(officerId, role);
         res.status(200).json({ success: true, data: farmers });
     } catch (error) {
         console.error("Error getting farmers:", error);
         res.status(500).json({ success: false, message: "Server error" });
     }
-}
+};
 
 export const getSchedules = async (req, res) => {
    try {
@@ -194,6 +207,26 @@ export const getWorkAssignments = async (req, res) => {
 export const captureFarmBoundary = async (req, res) => {
     try {
         const { farmerId, polygon, hectares, lat, lng } = req.body;
+        const officerId = req.user?.id;
+        const role = req.user?.role?.toLowerCase();
+        const isSupervisorOrAdmin = ["super admin", "admin", "program director", "regional manager"].includes(role);
+
+        if (officerId && !isSupervisorOrAdmin) {
+           const pool = (await import("../../lib/connect.js")).default;
+           const { rows: authorized } = await pool.query(
+              `SELECT fp.id FROM farmer_profiles fp
+               JOIN vendors v ON fp.vendor_id = v.id
+               WHERE fp.id = $1 AND (fp.registered_by = $2 OR v.registered_by = $2)`,
+              [farmerId, officerId]
+           );
+           if (authorized.length === 0) {
+              return res.status(403).json({ 
+                 success: false, 
+                 message: "Unauthorized: Field officers can only map farms for farmers they themselves registered." 
+              });
+           }
+        }
+
         const result = await fieldOpsDb.captureFarmBoundary(farmerId, polygon, hectares, lat, lng);
         
         if (req.logAudit) {
@@ -214,6 +247,7 @@ export const captureFarmBoundary = async (req, res) => {
 export const registerFarmer = async (req, res) => {
    try {
       const { fname, lname, email, phone, pword } = req.body;
+      const officerId = req.user?.id;
       
       const existingVendor = await getUserByEmail(email);
       if (existingVendor) {
@@ -241,6 +275,19 @@ export const registerFarmer = async (req, res) => {
       if (!newVendor) {
          return res.status(400).json({ success: false, error: ["Failed to create farmer account."] });
       }
+
+      const pool = (await import("../../lib/connect.js")).default;
+      if (officerId) {
+         await pool.query("UPDATE vendors SET registered_by = $1 WHERE id = $2", [officerId, newVendor.id]);
+      }
+
+      const ain = `AIN-${Date.now().toString().slice(-6)}`;
+      await pool.query(
+         `INSERT INTO farmer_profiles (vendor_id, agricultural_identity_number, certification_status, onboarding_status, registered_by)
+          VALUES ($1, $2, 'draft', 'pending', $3)
+          ON CONFLICT (vendor_id) DO UPDATE SET registered_by = EXCLUDED.registered_by`,
+         [newVendor.id, ain, officerId || null]
+      );
 
       res.status(201).json({ success: true, message: "Farmer successfully registered. Pending field approval." });
    } catch (error) {

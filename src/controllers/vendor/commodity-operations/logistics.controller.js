@@ -65,6 +65,7 @@ export const getIncomingLogisticsTickets = async (req, res) => {
     const query = `
       SELECT 
         lt.ticket_id, lt.ticket_number, lt.destination, lt.logistics_fee, lt.status, lt.created_at,
+        lt.delivery_proof_url, lt.delivery_latitude, lt.delivery_longitude, lt.delivery_geospatial_metadata, lt.delivery_notes, lt.delivered_at,
         hb.crop, hb.quantity_mt, hb.batch_number, hb.location as origin,
         COALESCE(NULLIF(TRIM(CONCAT(v.fname, ' ', v.lname)), ''), v.company_name, 'Unknown Entity') as entity_name, v.role as entity_role
       FROM logistics_tickets lt
@@ -178,17 +179,37 @@ export const completeLogisticsTicket = async (req, res) => {
       return res.status(404).json({ success: false, error: "Ticket not found or unauthorized" });
     }
 
-    const ticket = checkRes.rows[0];
+    const {
+      delivery_proof_url = null,
+      delivery_latitude = null,
+      delivery_longitude = null,
+      delivery_geospatial_metadata = null,
+      delivery_notes = null
+    } = req.body || {};
 
     await pool.query('BEGIN');
 
-    // Update ticket status to delivered
+    // Update ticket status to delivered with geospatial proof
     const updateRes = await pool.query(`
       UPDATE logistics_tickets 
-      SET status = 'delivered', updated_at = NOW() 
+      SET status = 'delivered', 
+          delivery_proof_url = COALESCE($2, delivery_proof_url),
+          delivery_latitude = COALESCE($3, delivery_latitude),
+          delivery_longitude = COALESCE($4, delivery_longitude),
+          delivery_geospatial_metadata = COALESCE($5, delivery_geospatial_metadata),
+          delivery_notes = COALESCE($6, delivery_notes),
+          delivered_at = NOW(),
+          updated_at = NOW() 
       WHERE ticket_id = $1 
       RETURNING *
-    `, [ticket_id]);
+    `, [
+      ticket_id,
+      delivery_proof_url,
+      delivery_latitude ? parseFloat(delivery_latitude) : null,
+      delivery_longitude ? parseFloat(delivery_longitude) : null,
+      delivery_geospatial_metadata ? JSON.stringify(delivery_geospatial_metadata) : null,
+      delivery_notes
+    ]);
 
     // Update harvest batch status to delivered
     await pool.query(`

@@ -44,8 +44,7 @@ const ORDER_STATUSES = [
 
 function isLogisticsPartner(payload) {
   const role = payload?.role?.toLowerCase?.();
-  const workspace = payload?.workspace?.toLowerCase();
-  return role === "logistics" && workspace === "marketplace";
+  return ["logistics", "logistics partner", "logistic", "logistics supplier"].includes(role);
 }
 
 logisiticsOperation.addVehicle = async (req, res) => {
@@ -66,9 +65,11 @@ logisiticsOperation.addVehicle = async (req, res) => {
       operating_regions,
       pricing_model,
       rate_amount,
+      base_amount,
+      max_tons,
     } = req.body;
 
-    const image = req.files.image;
+    const image = req.files?.image;
 
     // Parse operating_regions if it's a JSON string
     let parsedOperatingRegions = operating_regions;
@@ -93,6 +94,8 @@ logisiticsOperation.addVehicle = async (req, res) => {
       operating_regions: parsedOperatingRegions,
       pricing_model,
       rate_amount,
+      base_amount,
+      max_tons,
     });
     if (!validate.success) {
       const firstMsg = Object.values(validate.error.flatten().fieldErrors)
@@ -102,14 +105,19 @@ logisiticsOperation.addVehicle = async (req, res) => {
         return res.status(400).json({ success: false, error: firstMsg });
       }
     }
-    const imagesToCloudinary = await saveFileToCloudinary(
-      image,
-      "logistics_vehicle",
-      "image",
-    );
 
-    const imageUrl = imagesToCloudinary?.map((image) => image.secure_url);
-    const publicId = imagesToCloudinary?.map((image) => image.public_id);
+    let imageUrl = [];
+    let publicId = [];
+    if (image && (Array.isArray(image) ? image.length > 0 : true)) {
+      const imagesToCloudinary = await saveFileToCloudinary(
+        image,
+        "logistics_vehicle",
+        "image",
+      );
+      imageUrl = imagesToCloudinary?.map((img) => img.secure_url) || [];
+      publicId = imagesToCloudinary?.map((img) => img.public_id) || [];
+    }
+
     const result = await addVehicle({
       vendor_id: payload.id,
       title,
@@ -122,6 +130,8 @@ logisiticsOperation.addVehicle = async (req, res) => {
       operating_regions: parsedOperatingRegions,
       pricing_model,
       rate_amount,
+      base_amount,
+      max_tons,
       image: imageUrl,
       publicId,
     });
@@ -464,6 +474,9 @@ logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
       dispatch_notes,
       pickup_location,
       delivery_location,
+      pickup_latitude,
+      pickup_longitude,
+      pickup_geospatial_metadata,
     } = req.body;
 
     // Server-side validation
@@ -572,6 +585,9 @@ logisiticsOperation.startShipmentWithConfirmation = async (req, res) => {
       dispatch_notes,
       pickup_location,
       delivery_location,
+      pickup_latitude,
+      pickup_longitude,
+      pickup_geospatial_metadata,
     });
 
     if (!shipmentResult.success) {

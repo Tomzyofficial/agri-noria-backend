@@ -89,7 +89,8 @@ export const submitLevel2 = async (req, res) => {
         const {
             farm_name, ownership_type, location_address, latitude, longitude, farm_size_hectares,
             boundary_polygon, boundary_file_url, land_title_url, lease_agreement_url, community_attestation_url,
-            farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url
+            farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url,
+            farm_evidence_geospatial
         } = req.body;
 
         await pool.query('BEGIN');
@@ -100,30 +101,38 @@ export const submitLevel2 = async (req, res) => {
                 UPDATE farms 
                 SET farm_name=$1, ownership_type=$2, location_address=$3, latitude=$4, longitude=$5, farm_size_hectares=$6,
                     boundary_polygon=$7, boundary_file_url=$8, land_title_url=$9, lease_agreement_url=$10, community_attestation_url=$11,
-                    farm_entrance_photo_url=$12, farm_interior_photo_url=$13, crop_photo_url=$14, updated_at=now()
-                WHERE vendor_id = $15
+                    farm_entrance_photo_url=$12, farm_interior_photo_url=$13, crop_photo_url=$14,
+                    farm_evidence_geospatial=COALESCE($15, farm_evidence_geospatial), updated_at=now()
+                WHERE vendor_id = $16
             `, [
                 farm_name, ownership_type, location_address, parseNull(latitude), parseNull(longitude), parseNull(farm_size_hectares),
                 boundary_polygon, boundary_file_url, land_title_url, lease_agreement_url, community_attestation_url,
-                farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url, vendor_id
+                farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url,
+                farm_evidence_geospatial ? JSON.stringify(farm_evidence_geospatial) : null,
+                vendor_id
             ]);
         } else {
             await pool.query(`
                 INSERT INTO farms (
                     vendor_id, farm_name, ownership_type, location_address, latitude, longitude, farm_size_hectares,
                     boundary_polygon, boundary_file_url, land_title_url, lease_agreement_url, community_attestation_url,
-                    farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                    farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url, farm_evidence_geospatial
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             `, [
                 vendor_id, farm_name, ownership_type, location_address, parseNull(latitude), parseNull(longitude), parseNull(farm_size_hectares),
                 boundary_polygon, boundary_file_url, land_title_url, lease_agreement_url, community_attestation_url,
-                farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url
+                farm_entrance_photo_url, farm_interior_photo_url, crop_photo_url,
+                farm_evidence_geospatial ? JSON.stringify(farm_evidence_geospatial) : null
             ]);
         }
 
         // Update vendor onboarding level to 2 and set verified status after farm mapping
         await pool.query("UPDATE vendors SET onboarding_level = GREATEST(onboarding_level, 2), onboarding_status = 'verified', is_verified = true WHERE id = $1", [vendor_id]);
-        await pool.query("UPDATE farmer_profiles SET onboarding_status = 'verified', farm_size_hectares = COALESCE($1, farm_size_hectares) WHERE vendor_id = $2", [parseNull(farm_size_hectares), vendor_id]);
+        await pool.query("UPDATE farmer_profiles SET onboarding_status = 'verified', farm_size_hectares = COALESCE($1, farm_size_hectares), farm_evidence_geospatial = COALESCE($2, farm_evidence_geospatial) WHERE vendor_id = $3", [
+            parseNull(farm_size_hectares),
+            farm_evidence_geospatial ? JSON.stringify(farm_evidence_geospatial) : null,
+            vendor_id
+        ]);
 
         await pool.query('COMMIT');
         res.status(200).json({ success: true, message: "Level 2 Onboarding completed." });

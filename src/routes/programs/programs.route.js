@@ -11,6 +11,8 @@ programsRoute.get("/programs", programsController.getAll);
 programsRoute.post("/programs/:id/fund", programsController.fundProgram);
 programsRoute.get("/programs/:id/packages", programsController.getInputPackages);
 programsRoute.post("/programs/:id/packages", programsController.createInputPackage);
+programsRoute.get("/programs/institution/enrollments", programsController.getInstitutionEnrollments);
+programsRoute.post("/programs/enrollments/verify", programsController.verifyEnrollment);
 programsRoute.put("/programs/:id", programsController.update);
 
 export default programsRoute;

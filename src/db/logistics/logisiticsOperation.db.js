@@ -14,14 +14,19 @@ export async function addVehicle({
   rate_amount,
   image,
   publicId,
+  base_amount,
+  max_tons,
 }) {
   try {
+    const computedMaxTons = max_tons || (max_weight_kg ? parseFloat(max_weight_kg) / 1000 : 10);
+    const computedBaseAmount = base_amount || rate_amount || 35000;
+
     const queryText = `
       INSERT INTO vehicles (
         vendor_id, title, vehicle_type, license_plate, cargo_type,
         max_weight_kg, volume_cubic_meters, base_location, operating_regions,
-        pricing_model, rate_amount, image, public_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        pricing_model, rate_amount, image, public_id, base_amount, max_tons
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *;
     `;
 
@@ -39,6 +44,8 @@ export async function addVehicle({
       rate_amount,
       image,
       publicId,
+      computedBaseAmount,
+      computedMaxTons,
     ]);
 
     return { success: true, vehicle: result.rows[0] };

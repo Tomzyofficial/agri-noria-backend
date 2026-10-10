@@ -5,7 +5,7 @@ import emailService from "../../services/email/email.service.js";
 // Get all vendors (users) for super admin
 async function getAllUsers() {
    const { rows } = await pool.query(
-      `SELECT id, fname, lname, email, phone, role, is_active, is_verified, is_suspended, created_at 
+      `SELECT id, fname, lname, email, phone, role, is_active, is_verified, is_suspended, approval_status, onboarding_status, created_at 
        FROM vendors 
        ORDER BY created_at DESC`,
    );
@@ -44,6 +44,26 @@ async function toggleUserSuspension(userId, suspended) {
    const { rows } = await pool.query(
       "UPDATE vendors SET is_suspended = $1, updated_at = now() WHERE id = $2 RETURNING *",
       [suspended, userId],
+   );
+   return rows[0];
+}
+
+// Approve or reject vendor/farmer account
+async function setVendorApprovalStatus(userId, status) {
+   const isVerified = (status === 'approved');
+   const { rows } = await pool.query(
+      `UPDATE vendors 
+       SET approval_status = $1, is_verified = $2, updated_at = now() 
+       WHERE id = $3 
+       RETURNING *`,
+      [status, isVerified, userId]
+   );
+   await pool.query(
+      `UPDATE farmer_profiles 
+       SET onboarding_status = CASE WHEN $1 = 'approved' THEN 'verified' ELSE onboarding_status END,
+           certification_status = CASE WHEN $1 = 'approved' THEN 'certified' ELSE certification_status END
+       WHERE vendor_id = $2`,
+      [status, userId]
    );
    return rows[0];
 }
@@ -486,7 +506,7 @@ async function getInstitutionAnalytics(institutionId, role) {
    
    // If government, see all farmers. Otherwise, see only enrolled farmers
    const farmersCountQuery = isGovernment 
-      ? `(SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem')`
+      ? `(SELECT COUNT(*) FROM vendors WHERE LOWER(role) = 'farmer')`
       : `(SELECT COUNT(DISTINCT farmer_id) FROM farmer_programmes WHERE program_id IN (SELECT id FROM programs WHERE created_by = '${institutionId}'))`;
 
    const [ecosystemStats, inputStats, walletStats, healthStats, deadlinesStats, extraStats, inputMetricsStats] = await Promise.all([
@@ -702,7 +722,7 @@ async function getInstitutionPortfolio() {
          FROM repayments
       `),
       pool.query(`
-         SELECT COUNT(*) as total_farmers FROM vendors WHERE LOWER(role) = 'farmer' AND LOWER(workspace) = 'ecosystem'
+         SELECT COUNT(*) as total_farmers FROM vendors WHERE LOWER(role) = 'farmer'
       `)
    ]);
 
@@ -1311,6 +1331,7 @@ export {
    getAllAggregatorBuyers,
    getAggregatorsWithBuyerStats,
    toggleUserSuspension,
+   setVendorApprovalStatus,
    getAllAgreements,
    getAllEscrowPayments,
    getAllFinanceWallets,

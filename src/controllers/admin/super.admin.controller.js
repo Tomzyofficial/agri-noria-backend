@@ -4,6 +4,7 @@ import {
    getTotalUserCount, 
    getAllBuyers, 
    toggleUserSuspension,
+   setVendorApprovalStatus,
    getAllAgreements,
    getAllEscrowPayments,
    getAllFinanceWallets,
@@ -98,6 +99,44 @@ superAdminController.toggleSuspension = async (req, res) => {
    } catch (error) {
       console.error("Error toggling suspension:", error);
       return res.status(500).json({ success: false, error: "Failed to update user status" });
+   }
+};
+
+// Set user approval status (e.g. approve farmer)
+superAdminController.setApprovalStatus = async (req, res) => {
+   try {
+      const targetUserId = req.params.id || req.body.userId;
+      const { status } = req.body;
+      if (!targetUserId || !status) {
+         return res.status(400).json({ success: false, error: "User ID and status are required" });
+      }
+
+      if (!['approved', 'pending_approval', 'rejected'].includes(status)) {
+         return res.status(400).json({ success: false, error: "Invalid status. Must be approved, pending_approval, or rejected" });
+      }
+
+      const user = await setVendorApprovalStatus(targetUserId, status);
+      if (!user) {
+         return res.status(404).json({ success: false, error: "User not found" });
+      }
+
+      await createAuditLog(
+         req.adminPayload.id,
+         req.adminPayload.email,
+         `APPROVE_${user.role?.toUpperCase() || 'USER'}`,
+         "User",
+         `User account ${user.email} (${user.role}) was marked ${status}`,
+         req.ip
+      );
+
+      return res.status(200).json({
+         success: true,
+         message: `User ${status === 'approved' ? 'approved' : status} successfully`,
+         data: user,
+      });
+   } catch (error) {
+      console.error("Error setting user approval status:", error);
+      return res.status(500).json({ success: false, error: "Failed to update approval status" });
    }
 };
 

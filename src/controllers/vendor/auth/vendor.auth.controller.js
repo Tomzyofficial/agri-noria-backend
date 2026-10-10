@@ -100,38 +100,6 @@ vendorAuthController.signin = async (req, res) => {
       });
     }
 
-    // Auto-verify farmer on login so they can access the full platform
-    if (vendor.role?.toLowerCase() === "farmer" || !vendor.is_verified) {
-      const { default: pool } = await import("../../../lib/connect.js");
-      await pool.query(
-        `UPDATE vendors 
-         SET is_verified = true, 
-             onboarding_status = CASE WHEN onboarding_status = 'pending' THEN 'verified' ELSE onboarding_status END,
-             onboarding_level = GREATEST(COALESCE(onboarding_level, 0), 2),
-             updated_at = NOW() 
-         WHERE id = $1`,
-        [vendor.id],
-      );
-      await pool.query(
-        `UPDATE farmer_profiles 
-         SET onboarding_status = CASE WHEN onboarding_status = 'pending' THEN 'completed' ELSE onboarding_status END,
-             updated_at = NOW() 
-         WHERE vendor_id = $1`,
-        [vendor.id],
-      );
-      await pool.query(
-        `UPDATE farmer_organization_memberships 
-         SET verification_status = 'verified',
-             updated_at = NOW() 
-         WHERE farmer_id IN (SELECT id FROM farmer_profiles WHERE vendor_id = $1)`,
-        [vendor.id],
-      );
-      vendor.is_verified = true;
-      if (vendor.onboarding_status === "pending")
-        vendor.onboarding_status = "verified";
-      vendor.onboarding_level = Math.max(vendor.onboarding_level || 0, 2);
-    }
-
     // Create session (attach cookie to response)
     const token = await createVendorSession(res, {
       user: {
@@ -275,7 +243,7 @@ vendorAuthController.register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(pword, SALT_ROUNDS);
 
     let approval_status = "approved";
-    if (isFieldOps) {
+    if (isFieldOps || role.toLowerCase() === "farmer") {
       approval_status = "pending_approval";
     }
 
