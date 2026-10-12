@@ -1,4 +1,4 @@
-import { getJobs } from "../../db/jobs/publicJobs.db.js";
+import { getJobById, getJobs } from "../../db/jobs/publicJobs.db.js";
 
 export async function getJobsController(req, res) {
   try {
@@ -18,27 +18,25 @@ export async function getJobsController(req, res) {
   }
 }
 
-// export async function getJobController(req, res) {
-//   try {
-//     const job = await getJobBySlug(req.params.slug);
+export async function getJobByIdController(req, res) {
+  try {
+    const job = await getJobById(req.params.id);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: job,
+    });
+  } catch (error) {
+    console.error(error);
 
-//     if (!job) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Job not found",
-//       });
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       data: job,
-//     });
-//   } catch (error) {
-//     console.error(error);
-
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to fetch job",
-//     });
-//   }
-// }
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch job",
+    });
+  }
+}

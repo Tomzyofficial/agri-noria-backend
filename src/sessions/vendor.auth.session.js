@@ -55,12 +55,12 @@ export async function createVendorSession(res, { user, rememberMe = false }) {
 export async function verifyVendorToken(req) {
   try {
     // Check proxy injected header for active context
-    const workspace = req.headers["x-active-workspace"] || "ecosystem";
-    const activeCookieName =
-      workspace === "marketplace" ? "marketplace-session" : "ecosystem-session";
+    //  const workspace = req.headers["x-active-workspace"] || "ecosystem";
+    //  const activeCookieName =
+    //    workspace === "marketplace" ? "marketplace-session" : "ecosystem-session";
 
     let token =
-      req.cookies?.[activeCookieName] ||
+      // req.cookies?.[activeCookieName] ||
       req.cookies?.["vendor-session"] ||
       req.cookies?.["marketplace-session"] ||
       req.cookies?.["ecosystem-session"];
