@@ -88,15 +88,7 @@ vendorAuthController.signin = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(400).json({
         success: false,
-        error: ["Invalid email or password"],
-      });
-    }
-
-    // Check if suspended
-    if (vendor.is_suspended) {
-      return res.status(403).json({
-        success: false,
-        error: ["Your account has been suspended. Please contact support."],
+        error: ["Incorrect email or password"],
       });
     }
 

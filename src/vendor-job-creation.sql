@@ -22,7 +22,6 @@ CREATE TABLE jobs (
     benefits TEXT,
     applicants_count INTEGER DEFAULT 0,
     status VARCHAR(50) DEFAULT 'active',
-    expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
